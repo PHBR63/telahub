@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   username TEXT NOT NULL UNIQUE COLLATE NOCASE,
   display_name TEXT NOT NULL,
+  avatar_icon TEXT NOT NULL DEFAULT 'user',
+  avatar_color TEXT NOT NULL DEFAULT '#766cff',
   password_hash TEXT NOT NULL,
   recovery_code_hash TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -31,6 +33,8 @@ CREATE TABLE IF NOT EXISTS communities (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  icon TEXT NOT NULL DEFAULT 'users',
+  icon_color TEXT NOT NULL DEFAULT '#766cff',
   invite_code TEXT NOT NULL UNIQUE,
   created_at TEXT NOT NULL
 );
@@ -70,11 +74,22 @@ CREATE INDEX IF NOT EXISTS idx_members_user ON community_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
 `);
 
+function ensureColumn(table: 'users'|'communities', column: string, definition: string) {
+  const columns = db.pragma(`table_info(${table})`) as Array<{ name: string }>;
+  if (!columns.some((item) => item.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+ensureColumn('users', 'avatar_icon', "TEXT NOT NULL DEFAULT 'user'");
+ensureColumn('users', 'avatar_color', "TEXT NOT NULL DEFAULT '#766cff'");
+ensureColumn('communities', 'icon', "TEXT NOT NULL DEFAULT 'users'");
+ensureColumn('communities', 'icon_color', "TEXT NOT NULL DEFAULT '#766cff'");
+
 export type User = {
   id: string;
   email: string;
   username: string;
   display_name: string;
+  avatar_icon: string;
+  avatar_color: string;
   created_at: string;
   last_seen: string;
 };
@@ -85,6 +100,8 @@ export function publicUser(row: any): User {
     email: row.email,
     username: row.username,
     display_name: row.display_name,
+    avatar_icon: row.avatar_icon ?? 'user',
+    avatar_color: row.avatar_color ?? '#766cff',
     created_at: row.created_at,
     last_seen: row.last_seen,
   };

@@ -53,6 +53,14 @@ const registerSchema = credentialsSchema.extend({
   username: z.string().trim().min(3).max(24).regex(/^[a-zA-Z0-9_.-]+$/),
   displayName: z.string().trim().min(2).max(40),
 });
+const iconIds = ['user','users','sparkles','gamepad','code','rocket','crown','shield','palette','music','coffee','cat','star'] as const;
+const iconColors = ['#766cff','#4ed4c6','#f08b5d','#f05d77','#4d8df7','#b56cff','#e2b84b','#5bbf6a'] as const;
+const profileAppearanceSchema = z.object({ avatarIcon: z.enum(iconIds), avatarColor: z.enum(iconColors) });
+const communityIdentitySchema = z.object({
+  name: z.string().trim().min(2).max(50).optional(),
+  icon: z.enum(iconIds).optional(),
+  iconColor: z.enum(iconColors).optional(),
+}).refine((value) => Object.keys(value).length > 0);
 const communityNameSchema = z.object({ name: z.string().trim().min(2).max(50) });
 const channelNameSchema = z.string().trim().min(2).max(40).regex(/^[a-zA-Z0-9_\-À-ÿ ]+$/);
 const roleSchema = z.object({ role: z.enum(['admin', 'member']) });
@@ -116,6 +124,17 @@ app.post('/api/auth/logout', requireAuth, (req, res) => {
 
 app.get('/api/auth/me', requireAuth, (req: AuthRequest, res) => res.json({ user: req.user }));
 
+app.patch('/api/users/me', requireAuth, writeLimiter, (req: AuthRequest, res) => {
+  const parsed = profileAppearanceSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Ícone ou cor de perfil inválidos.' });
+  db.prepare('UPDATE users SET avatar_icon = ?, avatar_color = ? WHERE id = ?')
+    .run(parsed.data.avatarIcon, parsed.data.avatarColor, req.user!.id);
+  const updated = publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user!.id));
+  for (const client of io.sockets.sockets.values()) if (client.data.user?.id === updated.id) Object.assign(client.data.user, updated);
+  io.emit('profile:updated', { user: updated });
+  res.json({ user: updated });
+});
+
 app.post('/api/auth/recover', authLimiter, (req, res) => {
   const parsed = z.object({ email: z.string().email(), recoveryCode: z.string().min(8).max(32), newPassword: z.string().min(8).max(128) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Dados de recuperação inválidos.' });
@@ -167,7 +186,7 @@ app.get('/api/communities/:communityId/members', requireAuth, (req: AuthRequest,
   const communityId = String(req.params.communityId);
   if (!isCommunityMember(req.user!.id, communityId)) return res.status(403).json({ error: 'Acesso negado.' });
   const members: any[] = db.prepare(`
-    SELECT u.id,u.username,u.display_name,u.last_seen,cm.role
+    SELECT u.id,u.username,u.display_name,u.avatar_icon,u.avatar_color,u.last_seen,cm.role
     FROM community_members cm JOIN users u ON u.id = cm.user_id
     WHERE cm.community_id = ? ORDER BY CASE cm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,u.display_name
   `).all(communityId) as any[];
@@ -177,11 +196,14 @@ app.get('/api/communities/:communityId/members', requireAuth, (req: AuthRequest,
 app.patch('/api/communities/:communityId', requireAuth, writeLimiter, (req: AuthRequest, res) => {
   const communityId = String(req.params.communityId);
   if (!isCommunityAdmin(req.user!.id, communityId)) return res.status(403).json({ error: 'Somente administradores podem alterar a comunidade.' });
-  const parsed = communityNameSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'O nome deve ter entre 2 e 50 caracteres.' });
-  db.prepare('UPDATE communities SET name = ? WHERE id = ?').run(parsed.data.name, communityId);
+  const parsed = communityIdentitySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Nome, ícone ou cor da comunidade inválidos.' });
+  const current: any = db.prepare('SELECT name,icon,icon_color FROM communities WHERE id = ?').get(communityId);
+  if (!current) return res.status(404).json({ error: 'Comunidade não encontrada.' });
+  const next = { name: parsed.data.name ?? current.name, icon: parsed.data.icon ?? current.icon, iconColor: parsed.data.iconColor ?? current.icon_color };
+  db.prepare('UPDATE communities SET name = ?, icon = ?, icon_color = ? WHERE id = ?').run(next.name, next.icon, next.iconColor, communityId);
   notifyCommunityChanged(communityId);
-  res.json({ ok: true, name: parsed.data.name });
+  res.json({ ok: true, ...next });
 });
 
 app.post('/api/communities/:communityId/invite/rotate', requireAuth, writeLimiter, (req: AuthRequest, res) => {
@@ -302,7 +324,7 @@ app.get('/api/channels/:channelId/messages', requireAuth, (req: AuthRequest, res
   if (!channelAccess(req.user!.id, channelId)) return res.status(403).json({ error: 'Acesso negado.' });
   const before = typeof req.query.before === 'string' ? req.query.before : '9999-12-31T23:59:59.999Z';
   const messages = db.prepare(`
-    SELECT m.id,m.channel_id,m.content,m.created_at,m.edited_at,u.id AS author_id,u.username,u.display_name
+    SELECT m.id,m.channel_id,m.content,m.created_at,m.edited_at,u.id AS author_id,u.username,u.display_name,u.avatar_icon,u.avatar_color
     FROM messages m JOIN users u ON u.id = m.author_id
     WHERE m.channel_id = ? AND m.created_at < ? ORDER BY m.created_at DESC LIMIT 60
   `).all(channelId, before).reverse();
@@ -357,6 +379,7 @@ io.on('connection', (socket) => {
     const message = {
       id: id(), channel_id: parsed.data.channelId, author_id: user.id,
       username: user.username, display_name: user.display_name,
+      avatar_icon: user.avatar_icon, avatar_color: user.avatar_color,
       content: parsed.data.content, created_at: new Date().toISOString(), edited_at: null,
     };
     db.prepare('INSERT INTO messages (id,channel_id,author_id,content,created_at) VALUES (?,?,?,?,?)')

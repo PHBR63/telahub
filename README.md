@@ -8,9 +8,10 @@ A interface possui rolagem independente para canais, mensagens, membros, salas e
 
 | Área | Funcionalidades |
 |---|---|
-| Visão geral | Renomear comunidade, copiar ou renovar convite e excluir a comunidade com confirmação |
+| Visão geral | Renomear comunidade, escolher entre 13 ícones e 8 cores, copiar ou renovar convite e excluir a comunidade com confirmação |
 | Canais | Criar canais de texto ou tela, renomear, reordenar e excluir |
-| Membros | Consultar presença e função; proprietários podem promover ou rebaixar administradores; usuários autorizados podem remover membros |
+| Perfil | Cada usuário escolhe seu ícone e sua cor pelo cartão de perfil; a mudança aparece em membros e mensagens em tempo real |
+| Membros | Consultar presença, ícone e função; proprietários podem promover ou rebaixar administradores; usuários autorizados podem remover membros |
 | Segurança | Autorização no servidor para cada operação e bloqueio de ações administrativas para membros comuns |
 
 ## Componentes
