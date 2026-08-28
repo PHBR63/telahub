@@ -220,3 +220,18 @@ main{overflow:hidden}
 .quality-mode-options small{font-size:9px;line-height:1.35;color:#7f8ca5}
 
 @media(max-width:720px){.quality-mode-options{grid-template-columns:1fr}}
+
+/* Rolagem independente da sala de compartilhamento */
+.screen-room{overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable;-webkit-overflow-scrolling:touch;align-content:start}
+.screen-toolbar{position:sticky;top:0;z-index:15;flex:none;box-shadow:0 12px 28px rgba(5,8,18,.22)}
+.screen-room>.share-preferences,.screen-room>.room-error{flex:none}
+.screen-layout{flex:none;height:auto;min-height:clamp(540px,68vh,900px)}
+.screen-layout>.screen-grid{height:auto;min-height:inherit;grid-auto-rows:minmax(360px,1fr)}
+.screen-layout.focused{min-height:clamp(540px,68vh,900px)}
+
+@media(max-width:720px){
+  .screen-room{padding-bottom:24px}
+  .screen-toolbar{top:0}
+  .screen-layout,.screen-layout.focused{min-height:560px}
+  .screen-layout>.screen-grid{grid-auto-rows:minmax(300px,1fr)}
+}

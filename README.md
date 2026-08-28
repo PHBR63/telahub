@@ -4,14 +4,14 @@ TelaHub é um aplicativo web instalável para comunicação em equipes, com aute
 
 ## Recursos
 
-A interface possui rolagem independente para canais, mensagens, membros, salas e configurações, mantendo cabeçalhos e controles essenciais fixos. Proprietários e administradores acessam as configurações pela engrenagem ao lado do nome da comunidade.
+A interface possui rolagem independente para canais, mensagens, membros, salas e configurações. Na sala de compartilhamento, o conteúdo rola dentro do painel central enquanto o cabeçalho de conexão e transmissão permanece fixo; o restante da aplicação não se desloca. Proprietários e administradores acessam as configurações pela engrenagem ao lado do nome da comunidade.
 
 | Área | Funcionalidades |
 |---|---|
 | Visão geral | Renomear comunidade, enviar imagem ou escolher entre 13 ícones e 8 cores, copiar ou renovar convite e excluir a comunidade com confirmação |
 | Canais | Criar canais de texto ou tela, renomear, reordenar e excluir |
 | Perfil | Cada usuário envia uma imagem PNG/JPG/WebP de até 2 MB ou escolhe ícone e cor; a mudança aparece em membros e mensagens em tempo real |
-| Salas de tela | Volume de 0% a 100% e mudo local por stream remota, foco individual com faixa lateral, modos de áudio e perfis Economia 720p/2,5 Mbps, Equilibrado 1080p/5,5 Mbps e Jogo 1080p60/8 Mbps |
+| Salas de tela | Scroll próprio no desktop e celular com cabeçalho fixo, múltiplas streams, volume e mudo local, foco com faixa lateral, modos de áudio e perfis Economia 720p/2,5 Mbps, Equilibrado 1080p/5,5 Mbps e Jogo 1080p60/8 Mbps |
 | Membros | Consultar presença, ícone e função; proprietários podem promover ou rebaixar administradores; usuários autorizados podem remover membros |
 | Segurança | Autorização no servidor para cada operação e bloqueio de ações administrativas para membros comuns |
 
