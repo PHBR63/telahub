@@ -47,7 +47,7 @@ const writeLimiter = rateLimit({ windowMs: 60 * 1000, limit: 180, standardHeader
 
 const credentialsSchema = z.object({
   email: z.string().email().max(160).transform((v) => v.trim().toLowerCase()),
-  password: z.string().min(10).max(128),
+  password: z.string().min(8).max(128),
 });
 const registerSchema = credentialsSchema.extend({
   username: z.string().trim().min(3).max(24).regex(/^[a-zA-Z0-9_.-]+$/),
@@ -72,7 +72,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'telahub', t
 
 app.post('/api/auth/register', authLimiter, (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Confira e-mail, usuário e senha. A senha deve ter ao menos 10 caracteres.' });
+  if (!parsed.success) return res.status(400).json({ error: 'Confira e-mail, usuário e senha. A senha deve ter ao menos 8 caracteres.' });
   const { email, username, displayName, password } = parsed.data;
   const userId = id();
   const communityId = id();
@@ -117,7 +117,7 @@ app.post('/api/auth/logout', requireAuth, (req, res) => {
 app.get('/api/auth/me', requireAuth, (req: AuthRequest, res) => res.json({ user: req.user }));
 
 app.post('/api/auth/recover', authLimiter, (req, res) => {
-  const parsed = z.object({ email: z.string().email(), recoveryCode: z.string().min(8).max(32), newPassword: z.string().min(10).max(128) }).safeParse(req.body);
+  const parsed = z.object({ email: z.string().email(), recoveryCode: z.string().min(8).max(32), newPassword: z.string().min(8).max(128) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Dados de recuperação inválidos.' });
   const row: any = db.prepare('SELECT * FROM users WHERE email = ?').get(parsed.data.email.trim().toLowerCase());
   if (!row || row.recovery_code_hash !== sha256(parsed.data.recoveryCode.trim().toUpperCase())) return res.status(401).json({ error: 'Código de recuperação inválido.' });

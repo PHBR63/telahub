@@ -33,4 +33,4 @@ sudo docker compose logs -f --tail=100
 
 ## Segurança
 
-As senhas são derivadas com scrypt e salt aleatório. As sessões usam tokens opacos guardados como hash no banco e cookies `HttpOnly`, `Secure` e `SameSite=Lax`. O servidor valida origem, associação à comunidade e permissão de canal antes de mensagens ou tokens WebRTC.
+As senhas aceitam no mínimo 8 caracteres, sem exigência de maiúsculas, números ou símbolos, e são derivadas com scrypt e salt aleatório. As sessões usam tokens opacos guardados como hash no banco e cookies `HttpOnly`, `Secure` e `SameSite=Lax`. O servidor valida origem, associação à comunidade e permissão de canal antes de mensagens ou tokens WebRTC.
