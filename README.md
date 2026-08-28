@@ -2,6 +2,17 @@
 
 TelaHub é um aplicativo web instalável para comunicação em equipes, com autenticação própria, comunidades, canais de texto persistentes, presença em tempo real e salas de compartilhamento de tela usando LiveKit/WebRTC.
 
+## Recursos
+
+A interface possui rolagem independente para canais, mensagens, membros, salas e configurações, mantendo cabeçalhos e controles essenciais fixos. Proprietários e administradores acessam as configurações pela engrenagem ao lado do nome da comunidade.
+
+| Área | Funcionalidades |
+|---|---|
+| Visão geral | Renomear comunidade, copiar ou renovar convite e excluir a comunidade com confirmação |
+| Canais | Criar canais de texto ou tela, renomear, reordenar e excluir |
+| Membros | Consultar presença e função; proprietários podem promover ou rebaixar administradores; usuários autorizados podem remover membros |
+| Segurança | Autorização no servidor para cada operação e bloqueio de ações administrativas para membros comuns |
+
 ## Componentes
 
 | Serviço | Função |

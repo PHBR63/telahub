@@ -16,6 +16,8 @@ import {
 
 const app = express();
 const httpServer = createServer(app);
+const onlineUsers = new Map<string, number>();
+let io: Server;
 const publicUrl = process.env.PUBLIC_APP_URL ?? 'https://localhost';
 const livekitUrl = process.env.LIVEKIT_PUBLIC_URL ?? 'wss://localhost';
 const port = Number(process.env.PORT ?? 3000);
@@ -51,6 +53,20 @@ const registerSchema = credentialsSchema.extend({
   username: z.string().trim().min(3).max(24).regex(/^[a-zA-Z0-9_.-]+$/),
   displayName: z.string().trim().min(2).max(40),
 });
+const communityNameSchema = z.object({ name: z.string().trim().min(2).max(50) });
+const channelNameSchema = z.string().trim().min(2).max(40).regex(/^[a-zA-Z0-9_\-À-ÿ ]+$/);
+const roleSchema = z.object({ role: z.enum(['admin', 'member']) });
+
+function communityMembership(userId: string, communityId: string): { role: 'owner'|'admin'|'member' } | undefined {
+  return db.prepare('SELECT role FROM community_members WHERE community_id = ? AND user_id = ?').get(communityId, userId) as any;
+}
+function isCommunityAdmin(userId: string, communityId: string): boolean {
+  const membership = communityMembership(userId, communityId);
+  return Boolean(membership && ['owner', 'admin'].includes(membership.role));
+}
+function notifyCommunityChanged(communityId: string) {
+  io?.emit('community:updated', { communityId });
+}
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'telahub', time: new Date().toISOString() }));
 
@@ -150,28 +166,135 @@ app.post('/api/communities/join', requireAuth, writeLimiter, (req: AuthRequest, 
 app.get('/api/communities/:communityId/members', requireAuth, (req: AuthRequest, res) => {
   const communityId = String(req.params.communityId);
   if (!isCommunityMember(req.user!.id, communityId)) return res.status(403).json({ error: 'Acesso negado.' });
-  const members = db.prepare(`
+  const members: any[] = db.prepare(`
     SELECT u.id,u.username,u.display_name,u.last_seen,cm.role
     FROM community_members cm JOIN users u ON u.id = cm.user_id
     WHERE cm.community_id = ? ORDER BY CASE cm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,u.display_name
-  `).all(communityId);
-  res.json({ members });
+  `).all(communityId) as any[];
+  res.json({ members: members.map((member) => ({ ...member, online: onlineUsers.has(member.id) })) });
+});
+
+app.patch('/api/communities/:communityId', requireAuth, writeLimiter, (req: AuthRequest, res) => {
+  const communityId = String(req.params.communityId);
+  if (!isCommunityAdmin(req.user!.id, communityId)) return res.status(403).json({ error: 'Somente administradores podem alterar a comunidade.' });
+  const parsed = communityNameSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'O nome deve ter entre 2 e 50 caracteres.' });
+  db.prepare('UPDATE communities SET name = ? WHERE id = ?').run(parsed.data.name, communityId);
+  notifyCommunityChanged(communityId);
+  res.json({ ok: true, name: parsed.data.name });
+});
+
+app.post('/api/communities/:communityId/invite/rotate', requireAuth, writeLimiter, (req: AuthRequest, res) => {
+  const communityId = String(req.params.communityId);
+  if (!isCommunityAdmin(req.user!.id, communityId)) return res.status(403).json({ error: 'Somente administradores podem gerar um novo convite.' });
+  let next = inviteCode();
+  while (db.prepare('SELECT 1 FROM communities WHERE invite_code = ?').get(next)) next = inviteCode();
+  db.prepare('UPDATE communities SET invite_code = ? WHERE id = ?').run(next, communityId);
+  notifyCommunityChanged(communityId);
+  res.json({ ok: true, inviteCode: next });
+});
+
+app.patch('/api/communities/:communityId/members/:userId', requireAuth, writeLimiter, (req: AuthRequest, res) => {
+  const communityId = String(req.params.communityId);
+  const targetUserId = String(req.params.userId);
+  const requester = communityMembership(req.user!.id, communityId);
+  const target = communityMembership(targetUserId, communityId);
+  if (!requester || requester.role !== 'owner') return res.status(403).json({ error: 'Somente o proprietário pode alterar funções.' });
+  if (!target) return res.status(404).json({ error: 'Membro não encontrado.' });
+  if (target.role === 'owner' || targetUserId === req.user!.id) return res.status(400).json({ error: 'A função do proprietário não pode ser alterada.' });
+  const parsed = roleSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Função inválida.' });
+  db.prepare('UPDATE community_members SET role = ? WHERE community_id = ? AND user_id = ?').run(parsed.data.role, communityId, targetUserId);
+  notifyCommunityChanged(communityId);
+  res.json({ ok: true });
+});
+
+app.delete('/api/communities/:communityId/members/:userId', requireAuth, writeLimiter, (req: AuthRequest, res) => {
+  const communityId = String(req.params.communityId);
+  const targetUserId = String(req.params.userId);
+  const requester = communityMembership(req.user!.id, communityId);
+  const target = communityMembership(targetUserId, communityId);
+  if (!requester || !target) return res.status(404).json({ error: 'Membro não encontrado.' });
+  if (target.role === 'owner') return res.status(400).json({ error: 'O proprietário não pode sair ou ser removido.' });
+  const removingSelf = targetUserId === req.user!.id;
+  const allowed = removingSelf || requester.role === 'owner' || (requester.role === 'admin' && target.role === 'member');
+  if (!allowed) return res.status(403).json({ error: 'Você não pode remover este membro.' });
+  db.prepare('DELETE FROM community_members WHERE community_id = ? AND user_id = ?').run(communityId, targetUserId);
+  notifyCommunityChanged(communityId);
+  res.status(204).end();
 });
 
 app.post('/api/communities/:communityId/channels', requireAuth, writeLimiter, (req: AuthRequest, res) => {
-  const membership: any = db.prepare('SELECT role FROM community_members WHERE community_id = ? AND user_id = ?').get(req.params.communityId, req.user!.id);
-  if (!membership || !['owner', 'admin'].includes(membership.role)) return res.status(403).json({ error: 'Somente administradores podem criar canais.' });
-  const parsed = z.object({ name: z.string().trim().min(2).max(40).regex(/^[a-zA-Z0-9_\-À-ÿ ]+$/), type: z.enum(['text', 'screen']) }).safeParse(req.body);
+  const communityId = String(req.params.communityId);
+  if (!isCommunityAdmin(req.user!.id, communityId)) return res.status(403).json({ error: 'Somente administradores podem criar canais.' });
+  const parsed = z.object({ name: channelNameSchema, type: z.enum(['text', 'screen']) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Nome ou tipo de canal inválido.' });
   const channelId = id();
-  const position: any = db.prepare('SELECT COALESCE(MAX(position),-1)+1 AS next FROM channels WHERE community_id = ?').get(req.params.communityId);
+  const position: any = db.prepare('SELECT COALESCE(MAX(position),-1)+1 AS next FROM channels WHERE community_id = ?').get(communityId);
   try {
     db.prepare('INSERT INTO channels (id,community_id,name,type,position,created_at) VALUES (?,?,?,?,?,?)')
-      .run(channelId, req.params.communityId, parsed.data.name.toLowerCase().replace(/\s+/g, '-'), parsed.data.type, position.next, new Date().toISOString());
+      .run(channelId, communityId, parsed.data.name.toLowerCase().replace(/\s+/g, '-'), parsed.data.type, position.next, new Date().toISOString());
+    notifyCommunityChanged(communityId);
     res.status(201).json({ ok: true, id: channelId });
   } catch {
     res.status(409).json({ error: 'Já existe um canal com esse nome.' });
   }
+});
+
+app.patch('/api/channels/:channelId', requireAuth, writeLimiter, (req: AuthRequest, res) => {
+  const channelId = String(req.params.channelId);
+  const channel: any = db.prepare('SELECT * FROM channels WHERE id = ?').get(channelId);
+  if (!channel) return res.status(404).json({ error: 'Canal não encontrado.' });
+  if (!isCommunityAdmin(req.user!.id, channel.community_id)) return res.status(403).json({ error: 'Somente administradores podem editar canais.' });
+  const parsed = z.object({ name: channelNameSchema }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Nome do canal inválido.' });
+  try {
+    const name = parsed.data.name.toLowerCase().replace(/\s+/g, '-');
+    db.prepare('UPDATE channels SET name = ? WHERE id = ?').run(name, channelId);
+    notifyCommunityChanged(channel.community_id);
+    res.json({ ok: true, name });
+  } catch {
+    res.status(409).json({ error: 'Já existe um canal com esse nome.' });
+  }
+});
+
+app.delete('/api/channels/:channelId', requireAuth, writeLimiter, (req: AuthRequest, res) => {
+  const channelId = String(req.params.channelId);
+  const channel: any = db.prepare('SELECT * FROM channels WHERE id = ?').get(channelId);
+  if (!channel) return res.status(404).json({ error: 'Canal não encontrado.' });
+  if (!isCommunityAdmin(req.user!.id, channel.community_id)) return res.status(403).json({ error: 'Somente administradores podem excluir canais.' });
+  const count: any = db.prepare('SELECT COUNT(*) AS total FROM channels WHERE community_id = ?').get(channel.community_id);
+  if (count.total <= 1) return res.status(400).json({ error: 'A comunidade precisa manter ao menos um canal.' });
+  db.prepare('DELETE FROM channels WHERE id = ?').run(channelId);
+  notifyCommunityChanged(channel.community_id);
+  res.status(204).end();
+});
+
+app.patch('/api/communities/:communityId/channels/order', requireAuth, writeLimiter, (req: AuthRequest, res) => {
+  const communityId = String(req.params.communityId);
+  if (!isCommunityAdmin(req.user!.id, communityId)) return res.status(403).json({ error: 'Somente administradores podem reordenar canais.' });
+  const parsed = z.object({ channelIds: z.array(z.string().min(1)).min(1).max(200) }).safeParse(req.body);
+  if (!parsed.success || new Set(parsed.data.channelIds).size !== parsed.data.channelIds.length) return res.status(400).json({ error: 'Ordem de canais inválida.' });
+  const existing: any = db.prepare('SELECT COUNT(*) AS total FROM channels WHERE community_id = ?').get(communityId);
+  if (existing.total !== parsed.data.channelIds.length) return res.status(400).json({ error: 'A lista deve incluir todos os canais.' });
+  const belongs: any = db.prepare(`SELECT COUNT(*) AS total FROM channels WHERE community_id = ? AND id IN (${parsed.data.channelIds.map(()=>'?').join(',')})`).get(communityId, ...parsed.data.channelIds);
+  if (belongs.total !== parsed.data.channelIds.length) return res.status(400).json({ error: 'A lista contém canais inválidos.' });
+  const update = db.prepare('UPDATE channels SET position = ? WHERE id = ? AND community_id = ?');
+  db.transaction(() => parsed.data.channelIds.forEach((channelId, position) => update.run(position, channelId, communityId)))();
+  notifyCommunityChanged(communityId);
+  res.json({ ok: true });
+});
+
+app.delete('/api/communities/:communityId', requireAuth, writeLimiter, (req: AuthRequest, res) => {
+  const communityId = String(req.params.communityId);
+  const community: any = db.prepare('SELECT * FROM communities WHERE id = ?').get(communityId);
+  if (!community) return res.status(404).json({ error: 'Comunidade não encontrada.' });
+  if (community.owner_id !== req.user!.id) return res.status(403).json({ error: 'Somente o proprietário pode excluir a comunidade.' });
+  const parsed = z.object({ confirmation: z.string() }).safeParse(req.body);
+  if (!parsed.success || parsed.data.confirmation !== community.name) return res.status(400).json({ error: 'Digite o nome exato da comunidade para confirmar.' });
+  db.prepare('DELETE FROM communities WHERE id = ?').run(communityId);
+  notifyCommunityChanged(communityId);
+  res.status(204).end();
 });
 
 app.get('/api/channels/:channelId/messages', requireAuth, (req: AuthRequest, res) => {
@@ -198,14 +321,12 @@ app.get('/api/livekit/token', requireAuth, async (req: AuthRequest, res) => {
   res.json({ token: await token.toJwt(), url: livekitUrl, room: `screen-${channel.id}` });
 });
 
-const io = new Server(httpServer, {
+io = new Server(httpServer, {
   cors: { origin: publicUrl, credentials: true },
   maxHttpBufferSize: 24_000,
   pingInterval: 20_000,
   pingTimeout: 25_000,
 });
-
-const onlineUsers = new Map<string, number>();
 
 io.use((socket, next) => {
   const user = userFromCookie(socket.handshake.headers.cookie);
