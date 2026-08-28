@@ -2,11 +2,14 @@ import express from 'express';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import { createServer } from 'node:http';
-import { join } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { unlink } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { AccessToken } from 'livekit-server-sdk';
 import { z } from 'zod';
+import sharp from 'sharp';
 import { db, publicUser, isCommunityMember, channelAccess } from './db.js';
 import {
   createSession, destroySession, hashPassword, id, inviteCode, purgeExpiredSessions,
@@ -17,10 +20,17 @@ import {
 const app = express();
 const httpServer = createServer(app);
 const onlineUsers = new Map<string, number>();
+type ActiveScreen = { userId:string; displayName:string; active:true; audioMode:'window'|'system'|'none'; surface:'browser'|'window'|'monitor'|'unknown'; hasAudio:boolean; socketId:string };
+const activeScreens = new Map<string, Map<string, ActiveScreen>>();
 let io: Server;
 const publicUrl = process.env.PUBLIC_APP_URL ?? 'https://localhost';
 const livekitUrl = process.env.LIVEKIT_PUBLIC_URL ?? 'wss://localhost';
 const port = Number(process.env.PORT ?? 3000);
+const databasePath = process.env.DATABASE_PATH ?? './data/telahub.db';
+const uploadsDir = process.env.UPLOADS_PATH ?? join(dirname(databasePath), 'uploads');
+const maxIconBytes = 2 * 1024 * 1024;
+const acceptedImageTypes = new Set(['image/png','image/jpeg','image/webp']);
+mkdirSync(uploadsDir, { recursive: true });
 
 app.set('trust proxy', 1);
 app.use(helmet({
@@ -41,6 +51,7 @@ app.use(helmet({
 }));
 app.use(express.json({ limit: '24kb' }));
 app.use(sameOrigin);
+app.use('/uploads', express.static(uploadsDir, { immutable: true, maxAge: '1y', fallthrough: false }));
 
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 40, standardHeaders: true, legacyHeaders: false });
 const writeLimiter = rateLimit({ windowMs: 60 * 1000, limit: 180, standardHeaders: true, legacyHeaders: false });
@@ -75,6 +86,29 @@ function isCommunityAdmin(userId: string, communityId: string): boolean {
 function notifyCommunityChanged(communityId: string) {
   io?.emit('community:updated', { communityId });
 }
+function notifyProfileChanged(user: ReturnType<typeof publicUser>) {
+  for (const client of io.sockets.sockets.values()) if (client.data.user?.id === user.id) Object.assign(client.data.user, user);
+  io.emit('profile:updated', { user });
+}
+function removeStoredImage(url: string | null | undefined) {
+  if (!url || !/^\/uploads\/[a-z0-9-]+\.webp$/.test(url)) return;
+  void unlink(join(uploadsDir, basename(url))).catch(() => undefined);
+}
+async function storeIconImage(body: unknown, ownerPrefix: string): Promise<string> {
+  if (!Buffer.isBuffer(body) || body.length === 0) throw new Error('EMPTY_IMAGE');
+  if (body.length > maxIconBytes) throw new Error('IMAGE_TOO_LARGE');
+  const filename = `${ownerPrefix}-${id()}.webp`;
+  const target = join(uploadsDir, filename);
+  const image = sharp(body, { failOn: 'error', limitInputPixels: 20_000_000 });
+  const metadata = await image.metadata();
+  if (!metadata.format || !['png','jpeg','webp'].includes(metadata.format)) throw new Error('INVALID_IMAGE');
+  await image.rotate()
+    .resize(512, 512, { fit: 'cover', position: 'centre', withoutEnlargement: false })
+    .webp({ quality: 84, effort: 4 })
+    .toFile(target);
+  return `/uploads/${filename}`;
+}
+const iconUpload = express.raw({ type: () => true, limit: '3mb' });
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'telahub', time: new Date().toISOString() }));
 
@@ -130,8 +164,32 @@ app.patch('/api/users/me', requireAuth, writeLimiter, (req: AuthRequest, res) =>
   db.prepare('UPDATE users SET avatar_icon = ?, avatar_color = ? WHERE id = ?')
     .run(parsed.data.avatarIcon, parsed.data.avatarColor, req.user!.id);
   const updated = publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user!.id));
-  for (const client of io.sockets.sockets.values()) if (client.data.user?.id === updated.id) Object.assign(client.data.user, updated);
-  io.emit('profile:updated', { user: updated });
+  notifyProfileChanged(updated);
+  res.json({ user: updated });
+});
+
+app.put('/api/users/me/avatar', requireAuth, writeLimiter, iconUpload, async (req: AuthRequest, res) => {
+  if (!acceptedImageTypes.has(String(req.headers['content-type'] ?? '').split(';')[0])) return res.status(415).json({ error: 'Envie uma imagem PNG, JPG ou WebP.' });
+  try {
+    const current: any = db.prepare('SELECT avatar_image FROM users WHERE id = ?').get(req.user!.id);
+    const nextImage = await storeIconImage(req.body, `profile-${req.user!.id}`);
+    db.prepare('UPDATE users SET avatar_image = ? WHERE id = ?').run(nextImage, req.user!.id);
+    removeStoredImage(current?.avatar_image);
+    const updated = publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user!.id));
+    notifyProfileChanged(updated);
+    res.json({ user: updated });
+  } catch (error: any) {
+    if (error?.message === 'IMAGE_TOO_LARGE') return res.status(413).json({ error: 'A imagem deve ter no máximo 2 MB.' });
+    res.status(400).json({ error: 'Não foi possível processar esta imagem.' });
+  }
+});
+
+app.delete('/api/users/me/avatar', requireAuth, writeLimiter, (req: AuthRequest, res) => {
+  const current: any = db.prepare('SELECT avatar_image FROM users WHERE id = ?').get(req.user!.id);
+  db.prepare('UPDATE users SET avatar_image = NULL WHERE id = ?').run(req.user!.id);
+  removeStoredImage(current?.avatar_image);
+  const updated = publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user!.id));
+  notifyProfileChanged(updated);
   res.json({ user: updated });
 });
 
@@ -186,7 +244,7 @@ app.get('/api/communities/:communityId/members', requireAuth, (req: AuthRequest,
   const communityId = String(req.params.communityId);
   if (!isCommunityMember(req.user!.id, communityId)) return res.status(403).json({ error: 'Acesso negado.' });
   const members: any[] = db.prepare(`
-    SELECT u.id,u.username,u.display_name,u.avatar_icon,u.avatar_color,u.last_seen,cm.role
+    SELECT u.id,u.username,u.display_name,u.avatar_icon,u.avatar_color,u.avatar_image,u.last_seen,cm.role
     FROM community_members cm JOIN users u ON u.id = cm.user_id
     WHERE cm.community_id = ? ORDER BY CASE cm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,u.display_name
   `).all(communityId) as any[];
@@ -204,6 +262,35 @@ app.patch('/api/communities/:communityId', requireAuth, writeLimiter, (req: Auth
   db.prepare('UPDATE communities SET name = ?, icon = ?, icon_color = ? WHERE id = ?').run(next.name, next.icon, next.iconColor, communityId);
   notifyCommunityChanged(communityId);
   res.json({ ok: true, ...next });
+});
+
+app.put('/api/communities/:communityId/icon-image', requireAuth, writeLimiter, iconUpload, async (req: AuthRequest, res) => {
+  const communityId = String(req.params.communityId);
+  if (!isCommunityAdmin(req.user!.id, communityId)) return res.status(403).json({ error: 'Somente administradores podem alterar a imagem da comunidade.' });
+  if (!acceptedImageTypes.has(String(req.headers['content-type'] ?? '').split(';')[0])) return res.status(415).json({ error: 'Envie uma imagem PNG, JPG ou WebP.' });
+  try {
+    const current: any = db.prepare('SELECT icon_image FROM communities WHERE id = ?').get(communityId);
+    if (!current) return res.status(404).json({ error: 'Comunidade não encontrada.' });
+    const nextImage = await storeIconImage(req.body, `community-${communityId}`);
+    db.prepare('UPDATE communities SET icon_image = ? WHERE id = ?').run(nextImage, communityId);
+    removeStoredImage(current.icon_image);
+    notifyCommunityChanged(communityId);
+    res.json({ ok: true, iconImage: nextImage });
+  } catch (error: any) {
+    if (error?.message === 'IMAGE_TOO_LARGE') return res.status(413).json({ error: 'A imagem deve ter no máximo 2 MB.' });
+    res.status(400).json({ error: 'Não foi possível processar esta imagem.' });
+  }
+});
+
+app.delete('/api/communities/:communityId/icon-image', requireAuth, writeLimiter, (req: AuthRequest, res) => {
+  const communityId = String(req.params.communityId);
+  if (!isCommunityAdmin(req.user!.id, communityId)) return res.status(403).json({ error: 'Somente administradores podem remover a imagem da comunidade.' });
+  const current: any = db.prepare('SELECT icon_image FROM communities WHERE id = ?').get(communityId);
+  if (!current) return res.status(404).json({ error: 'Comunidade não encontrada.' });
+  db.prepare('UPDATE communities SET icon_image = NULL WHERE id = ?').run(communityId);
+  removeStoredImage(current.icon_image);
+  notifyCommunityChanged(communityId);
+  res.json({ ok: true });
 });
 
 app.post('/api/communities/:communityId/invite/rotate', requireAuth, writeLimiter, (req: AuthRequest, res) => {
@@ -315,6 +402,7 @@ app.delete('/api/communities/:communityId', requireAuth, writeLimiter, (req: Aut
   const parsed = z.object({ confirmation: z.string() }).safeParse(req.body);
   if (!parsed.success || parsed.data.confirmation !== community.name) return res.status(400).json({ error: 'Digite o nome exato da comunidade para confirmar.' });
   db.prepare('DELETE FROM communities WHERE id = ?').run(communityId);
+  removeStoredImage(community.icon_image);
   notifyCommunityChanged(communityId);
   res.status(204).end();
 });
@@ -324,7 +412,7 @@ app.get('/api/channels/:channelId/messages', requireAuth, (req: AuthRequest, res
   if (!channelAccess(req.user!.id, channelId)) return res.status(403).json({ error: 'Acesso negado.' });
   const before = typeof req.query.before === 'string' ? req.query.before : '9999-12-31T23:59:59.999Z';
   const messages = db.prepare(`
-    SELECT m.id,m.channel_id,m.content,m.created_at,m.edited_at,u.id AS author_id,u.username,u.display_name,u.avatar_icon,u.avatar_color
+    SELECT m.id,m.channel_id,m.content,m.created_at,m.edited_at,u.id AS author_id,u.username,u.display_name,u.avatar_icon,u.avatar_color,u.avatar_image
     FROM messages m JOIN users u ON u.id = m.author_id
     WHERE m.channel_id = ? AND m.created_at < ? ORDER BY m.created_at DESC LIMIT 60
   `).all(channelId, before).reverse();
@@ -368,6 +456,7 @@ io.on('connection', (socket) => {
     if (!channel) return ack?.({ ok: false, error: 'Acesso negado.' });
     for (const room of socket.rooms) if (room.startsWith('channel:')) socket.leave(room);
     socket.join(`channel:${channelId}`);
+    for (const screen of activeScreens.get(channelId)?.values() ?? []) { const { socketId: _socketId, ...publicScreen } = screen; socket.emit('screen:status', publicScreen); }
     ack?.({ ok: true });
   });
 
@@ -379,7 +468,7 @@ io.on('connection', (socket) => {
     const message = {
       id: id(), channel_id: parsed.data.channelId, author_id: user.id,
       username: user.username, display_name: user.display_name,
-      avatar_icon: user.avatar_icon, avatar_color: user.avatar_color,
+      avatar_icon: user.avatar_icon, avatar_color: user.avatar_color, avatar_image: user.avatar_image,
       content: parsed.data.content, created_at: new Date().toISOString(), edited_at: null,
     };
     db.prepare('INSERT INTO messages (id,channel_id,author_id,content,created_at) VALUES (?,?,?,?,?)')
@@ -395,12 +484,20 @@ io.on('connection', (socket) => {
   });
 
   socket.on('screen:status', (payload: unknown) => {
-    const parsed = z.object({ channelId: z.string(), active: z.boolean() }).safeParse(payload);
+    const parsed = z.object({ channelId: z.string(), active: z.boolean(), audioMode: z.enum(['window','system','none']).optional(), surface: z.enum(['browser','window','monitor','unknown']).optional(), hasAudio: z.boolean().optional() }).safeParse(payload);
     if (!parsed.success || !channelAccess(user.id, parsed.data.channelId)) return;
-    io.to(`channel:${parsed.data.channelId}`).emit('screen:status', { userId: user.id, displayName: user.display_name, active: parsed.data.active });
+    const screens = activeScreens.get(parsed.data.channelId) ?? new Map<string, ActiveScreen>();
+    if (parsed.data.active && parsed.data.audioMode && parsed.data.surface && typeof parsed.data.hasAudio === 'boolean') {
+      screens.set(user.id, { userId:user.id, displayName:user.display_name, active:true, audioMode:parsed.data.audioMode, surface:parsed.data.surface, hasAudio:parsed.data.hasAudio, socketId:socket.id });
+      activeScreens.set(parsed.data.channelId, screens);
+    } else {
+      screens.delete(user.id); if (!screens.size) activeScreens.delete(parsed.data.channelId);
+    }
+    io.to(`channel:${parsed.data.channelId}`).emit('screen:status', { userId: user.id, displayName: user.display_name, active: parsed.data.active, audioMode: parsed.data.audioMode, surface: parsed.data.surface, hasAudio: parsed.data.hasAudio });
   });
 
   socket.on('disconnect', () => {
+    for (const [channelId, screens] of activeScreens) { const current=screens.get(user.id); if(current?.socketId===socket.id){screens.delete(user.id);io.to(`channel:${channelId}`).emit('screen:status',{userId:user.id,displayName:user.display_name,active:false});if(!screens.size)activeScreens.delete(channelId);} }
     const count = (onlineUsers.get(user.id) ?? 1) - 1;
     if (count <= 0) {
       onlineUsers.delete(user.id);

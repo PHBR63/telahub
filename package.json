@@ -20,6 +20,7 @@
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "sharp": "^0.35.4",
     "socket.io": "latest",
     "socket.io-client": "latest",
     "zod": "latest"

@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT NOT NULL,
   avatar_icon TEXT NOT NULL DEFAULT 'user',
   avatar_color TEXT NOT NULL DEFAULT '#766cff',
+  avatar_image TEXT,
   password_hash TEXT NOT NULL,
   recovery_code_hash TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -35,6 +36,7 @@ CREATE TABLE IF NOT EXISTS communities (
   owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   icon TEXT NOT NULL DEFAULT 'users',
   icon_color TEXT NOT NULL DEFAULT '#766cff',
+  icon_image TEXT,
   invite_code TEXT NOT NULL UNIQUE,
   created_at TEXT NOT NULL
 );
@@ -80,8 +82,10 @@ function ensureColumn(table: 'users'|'communities', column: string, definition: 
 }
 ensureColumn('users', 'avatar_icon', "TEXT NOT NULL DEFAULT 'user'");
 ensureColumn('users', 'avatar_color', "TEXT NOT NULL DEFAULT '#766cff'");
+ensureColumn('users', 'avatar_image', 'TEXT');
 ensureColumn('communities', 'icon', "TEXT NOT NULL DEFAULT 'users'");
 ensureColumn('communities', 'icon_color', "TEXT NOT NULL DEFAULT '#766cff'");
+ensureColumn('communities', 'icon_image', 'TEXT');
 
 export type User = {
   id: string;
@@ -90,6 +94,7 @@ export type User = {
   display_name: string;
   avatar_icon: string;
   avatar_color: string;
+  avatar_image: string | null;
   created_at: string;
   last_seen: string;
 };
@@ -102,6 +107,7 @@ export function publicUser(row: any): User {
     display_name: row.display_name,
     avatar_icon: row.avatar_icon ?? 'user',
     avatar_color: row.avatar_color ?? '#766cff',
+    avatar_image: row.avatar_image ?? null,
     created_at: row.created_at,
     last_seen: row.last_seen,
   };
