@@ -207,3 +207,16 @@ main{overflow:hidden}
 
 .stream-audio-source{position:absolute;left:10px;top:10px;padding:5px 8px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(5,8,18,.84);color:#8d99b0;font-size:9px;font-weight:800;letter-spacing:.02em;backdrop-filter:blur(9px)}
 .stream-audio-source.with-audio{border-color:rgba(78,212,198,.3);color:#86e4d9;background:rgba(13,45,48,.8)}
+
+/* Perfis de qualidade e bitrate */
+.quality-preferences{border-color:rgba(118,108,255,.22);background:linear-gradient(135deg,rgba(118,108,255,.07),rgba(13,19,38,.72) 48%)}
+.quality-preferences .share-preferences-title>svg{color:#a8a2ff}
+.quality-mode-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.quality-mode-options button{display:grid;gap:3px;min-width:0;padding:9px 11px;text-align:left;border:1px solid var(--border);border-radius:10px;background:#10182c;color:#aeb8cc;cursor:pointer}
+.quality-mode-options button:hover{border-color:rgba(118,108,255,.42)}
+.quality-mode-options button.active{border-color:rgba(118,108,255,.56);background:rgba(118,108,255,.12);color:#f2f0ff;box-shadow:inset 0 0 0 1px rgba(118,108,255,.1)}
+.quality-mode-options button:disabled{opacity:.66;cursor:not-allowed}
+.quality-mode-options strong{font-size:11px}
+.quality-mode-options small{font-size:9px;line-height:1.35;color:#7f8ca5}
+
+@media(max-width:720px){.quality-mode-options{grid-template-columns:1fr}}
