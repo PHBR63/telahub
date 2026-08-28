@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { io, type Socket } from 'socket.io-client';
 import { Room, RoomEvent, Track, type RemoteTrack, type LocalTrack } from 'livekit-client';
-import { Hash, MonitorUp, Plus, LogOut, Send, Users, Copy, Radio, Wifi, WifiOff, ShieldCheck, Eye, EyeOff, KeyRound } from 'lucide-react';
+import { Hash, MonitorUp, Plus, LogOut, Send, Users, Copy, Radio, Wifi, ShieldCheck, Eye, EyeOff, KeyRound, Mic, MicOff, Volume2 } from 'lucide-react';
 import './styles.css';
 
 type User = { id:string; email:string; username:string; display_name:string; created_at:string; last_seen:string };
@@ -31,13 +31,14 @@ function Auth({onAuthenticated}:{onAuthenticated:(user:User)=>void}){
   const [loading,setLoading]=useState(false);
   const [showPassword,setShowPassword]=useState(false);
   const [newRecovery,setNewRecovery]=useState('');
+  const [pendingUser,setPendingUser]=useState<User|null>(null);
   async function submit(e:React.FormEvent){
     e.preventDefault(); setError(''); setLoading(true);
     try{
       if(mode==='login'){
         const r=await api<{user:User}>('/api/auth/login',{method:'POST',body:JSON.stringify({email:form.email,password:form.password})}); onAuthenticated(r.user);
       }else if(mode==='register'){
-        const r=await api<{user:User;recoveryCode:string}>('/api/auth/register',{method:'POST',body:JSON.stringify(form)}); setNewRecovery(r.recoveryCode); onAuthenticated(r.user);
+        const r=await api<{user:User;recoveryCode:string}>('/api/auth/register',{method:'POST',body:JSON.stringify(form)}); setNewRecovery(r.recoveryCode); setPendingUser(r.user);
       }else{
         const r=await api<{recoveryCode:string}>('/api/auth/recover',{method:'POST',body:JSON.stringify({email:form.email,recoveryCode:form.recoveryCode,newPassword:form.newPassword})});
         setNewRecovery(r.recoveryCode); setMode('login'); setForm({...form,password:'',newPassword:'',recoveryCode:''});
@@ -71,7 +72,7 @@ function Auth({onAuthenticated}:{onAuthenticated:(user:User)=>void}){
         {mode!=='recover'&&<button onClick={()=>setMode('recover')}>Esqueci minha senha</button>}
       </div>
     </section>
-    {newRecovery&&<div className="modal-backdrop"><div className="recovery-modal"><span className="modal-icon"><KeyRound/></span><h3>Guarde seu novo código</h3><p>Este código é a única forma de recuperar sua conta sem e-mail. Armazene-o em um local seguro.</p><code>{newRecovery}</code><button className="primary wide" onClick={()=>setNewRecovery('')}>Já salvei o código</button></div></div>}
+    {newRecovery&&<div className="modal-backdrop"><div className="recovery-modal"><span className="modal-icon"><KeyRound/></span><h3>Guarde seu novo código</h3><p>Este código é a única forma de recuperar sua conta sem e-mail. Armazene-o em um local seguro.</p><code>{newRecovery}</code><button className="primary wide" onClick={()=>{setNewRecovery('');if(pendingUser)onAuthenticated(pendingUser);}}>Já salvei o código</button></div></div>}
   </div>
 }
 
@@ -81,28 +82,56 @@ function ScreenTile({track,label}:{track:RemoteTrack|LocalTrack;label:string}){
   return <div className="screen-tile"><video ref={ref} autoPlay playsInline/><span>{label}</span></div>;
 }
 
+function AudioOutput({track}:{track:RemoteTrack}){
+  const ref=useRef<HTMLAudioElement>(null);
+  useEffect(()=>{const el=ref.current;if(el)track.attach(el);return()=>{if(el)track.detach(el);};},[track]);
+  return <audio ref={ref} autoPlay playsInline/>;
+}
+
 function ScreenRoom({channel,user,socket}:{channel:Channel;user:User;socket:Socket}){
-  const [room,setRoom]=useState<Room|null>(null); const [version,setVersion]=useState(0); const [status,setStatus]=useState('Conectando…'); const [sharing,setSharing]=useState(false); const [error,setError]=useState('');
+  const [room,setRoom]=useState<Room|null>(null); const [version,setVersion]=useState(0); const [status,setStatus]=useState('Conectando…'); const [sharing,setSharing]=useState(false); const [microphone,setMicrophone]=useState(false); const [error,setError]=useState('');
   useEffect(()=>{
-    let active=true; const r=new Room({adaptiveStream:true,dynacast:true});
+    let active=true; const r=new Room({adaptiveStream:true,dynacast:true,disconnectOnPageLeave:true});
     const refresh=()=>active&&setVersion(v=>v+1);
-    r.on(RoomEvent.TrackSubscribed,refresh).on(RoomEvent.TrackUnsubscribed,refresh).on(RoomEvent.ParticipantConnected,refresh).on(RoomEvent.ParticipantDisconnected,refresh).on(RoomEvent.LocalTrackPublished,refresh).on(RoomEvent.LocalTrackUnpublished,()=>{refresh();setSharing(false);socket.emit('screen:status',{channelId:channel.id,active:false});});
-    api<{token:string;url:string}>('/api/livekit/token?channelId='+encodeURIComponent(channel.id)).then(async data=>{await r.connect(data.url,data.token);if(active){setRoom(r);setStatus('Conectado');refresh();}}).catch((e)=>active&&(setError(e.message),setStatus('Falha na conexão')));
+    r.on(RoomEvent.TrackSubscribed,refresh)
+      .on(RoomEvent.TrackUnsubscribed,refresh)
+      .on(RoomEvent.ParticipantConnected,refresh)
+      .on(RoomEvent.ParticipantDisconnected,refresh)
+      .on(RoomEvent.LocalTrackPublished,refresh)
+      .on(RoomEvent.LocalTrackUnpublished,(publication)=>{refresh();if(publication.source===Track.Source.ScreenShare){setSharing(false);socket.emit('screen:status',{channelId:channel.id,active:false});}if(publication.source===Track.Source.Microphone)setMicrophone(false);})
+      .on(RoomEvent.Reconnecting,()=>active&&setStatus('Reconectando…'))
+      .on(RoomEvent.Reconnected,()=>active&&setStatus('Conectado'))
+      .on(RoomEvent.Disconnected,()=>active&&setStatus('Desconectado'));
+    api<{token:string;url:string}>('/api/livekit/token?channelId='+encodeURIComponent(channel.id)).then(async data=>{await r.connect(data.url,data.token,{autoSubscribe:true});if(active){setRoom(r);setStatus('Conectado');refresh();}}).catch((e)=>active&&(setError(e.message),setStatus('Falha na conexão')));
     return()=>{active=false;r.disconnect();};
   },[channel.id,socket]);
-  async function toggleShare(){if(!room)return;setError('');try{await room.localParticipant.setScreenShareEnabled(!sharing);setSharing(!sharing);socket.emit('screen:status',{channelId:channel.id,active:!sharing});setVersion(v=>v+1);}catch(e:any){setError(e.message||'O navegador bloqueou o compartilhamento.');}}
+  async function toggleShare(){
+    if(!room)return; setError('');
+    try{
+      const next=!sharing;
+      await room.localParticipant.setScreenShareEnabled(next,{audio:true});
+      setSharing(next); socket.emit('screen:status',{channelId:channel.id,active:next}); setVersion(v=>v+1);
+    }catch(e:any){setError(e.message||'O navegador bloqueou o compartilhamento.');}
+  }
+  async function toggleMicrophone(){
+    if(!room)return; setError('');
+    try{const next=!microphone;await room.localParticipant.setMicrophoneEnabled(next);setMicrophone(next);setVersion(v=>v+1);}catch(e:any){setError(e.message||'Não foi possível acessar o microfone.');}
+  }
   const tracks=useMemo(()=>{if(!room)return[] as {track:RemoteTrack|LocalTrack;label:string;id:string}[];const all=[room.localParticipant,...Array.from(room.remoteParticipants.values())];return all.flatMap(p=>{const pub=p.getTrackPublication(Track.Source.ScreenShare);return pub?.track?[{track:pub.track,label:p.identity===user.id?'Sua tela':p.name||p.identity,id:p.identity}]:[];});},[room,version,user.id]);
+  const audioTracks=useMemo(()=>{if(!room)return[] as {track:RemoteTrack;id:string}[];return Array.from(room.remoteParticipants.values()).flatMap(p=>[p.getTrackPublication(Track.Source.Microphone),p.getTrackPublication(Track.Source.ScreenShareAudio)].filter(pub=>pub?.track).map(pub=>({track:pub!.track as RemoteTrack,id:`${p.identity}-${pub!.source}`})));},[room,version]);
   return <div className="screen-room">
-    <div className="screen-toolbar"><div><span className={'status-dot '+(room?'online':'')}/><strong>{status}</strong><small>{tracks.length?`${tracks.length} tela${tracks.length>1?'s':''} ativa${tracks.length>1?'s':''}`:'Nenhuma tela sendo compartilhada'}</small></div><button className={sharing?'danger':'primary'} disabled={!room} onClick={toggleShare}><MonitorUp size={18}/>{sharing?'Parar transmissão':'Compartilhar minha tela'}</button></div>
+    <div className="audio-outputs">{audioTracks.map(item=><AudioOutput key={item.id} track={item.track}/>)}</div>
+    <div className="screen-toolbar"><div><span className={'status-dot '+(room&&status==='Conectado'?'online':'')}/><strong>{status}</strong><small>{tracks.length?`${tracks.length} tela${tracks.length>1?'s':''} ativa${tracks.length>1?'s':''} · áudio em tempo real`:'Nenhuma tela sendo compartilhada'}</small></div><div className="media-actions"><button className={microphone?'media-button active':'media-button'} disabled={!room} onClick={toggleMicrophone}>{microphone?<Mic size={18}/>:<MicOff size={18}/>}<span>{microphone?'Microfone ligado':'Ativar voz'}</span></button><button className={sharing?'danger':'primary'} disabled={!room} onClick={toggleShare}><MonitorUp size={18}/>{sharing?'Parar transmissão':'Compartilhar tela + áudio'}</button></div></div>
+    <div className="audio-hint"><Volume2 size={15}/><span>Para transmitir o som do computador, escolha uma <strong>aba do navegador</strong> e marque “Compartilhar áudio da aba”.</span></div>
     {error&&<div className="error-box room-error">{error}</div>}
-    <div className={'screen-grid '+(tracks.length===1?'single':'')}>{tracks.length?tracks.map(item=><ScreenTile key={item.id} {...item}/>):<div className="screen-empty"><span><MonitorUp size={42}/></span><h3>A sala está pronta</h3><p>Inicie o compartilhamento para apresentar uma janela, aba ou tela inteira.</p></div>}</div>
+    <div className={'screen-grid '+(tracks.length===1?'single':'')}>{tracks.length?tracks.map(item=><ScreenTile key={item.id} {...item}/>):<div className="screen-empty"><span><MonitorUp size={42}/></span><h3>A sala está pronta</h3><p>Compartilhe uma aba, janela ou tela inteira com áudio e baixa latência.</p></div>}</div>
   </div>
 }
 
 function Chat({channel,user,socket}:{channel:Channel;user:User;socket:Socket}){
   const [messages,setMessages]=useState<Message[]>([]); const [content,setContent]=useState(''); const [typing,setTyping]=useState<string[]>([]); const endRef=useRef<HTMLDivElement>(null); const typingTimer=useRef<number|undefined>(undefined);
   useEffect(()=>{setMessages([]);api<{messages:Message[]}>('/api/channels/'+channel.id+'/messages').then(r=>setMessages(r.messages));socket.emit('channel:join',channel.id);const onMessage=(m:Message)=>{if(m.channel_id===channel.id)setMessages(prev=>prev.some(x=>x.id===m.id)?prev:[...prev,m]);};const onTyping=(d:any)=>{if(d.userId===user.id)return;setTyping(prev=>d.active?Array.from(new Set([...prev,d.displayName])):prev.filter(n=>n!==d.displayName));};socket.on('message:new',onMessage);socket.on('typing',onTyping);return()=>{socket.off('message:new',onMessage);socket.off('typing',onTyping);};},[channel.id,socket,user.id]);
-  useEffect(()=>endRef.current?.scrollIntoView({behavior:'smooth'}),[messages.length]);
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:'smooth'});},[messages.length]);
   function update(value:string){setContent(value);socket.emit('typing',{channelId:channel.id,active:true});window.clearTimeout(typingTimer.current);typingTimer.current=window.setTimeout(()=>socket.emit('typing',{channelId:channel.id,active:false}),1200);}
   function send(e:React.FormEvent){e.preventDefault();const text=content.trim();if(!text)return;socket.emit('message:send',{channelId:channel.id,content:text},(r:any)=>{if(!r?.ok)return;setContent('');socket.emit('typing',{channelId:channel.id,active:false});});}
   let previousDay='';
@@ -132,5 +161,12 @@ function App(){
   </div>;
 }
 
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+class AppErrorBoundary extends React.Component<{children:React.ReactNode},{error:string}> {
+  state={error:''};
+  static getDerivedStateFromError(){return{error:'A interface encontrou uma falha inesperada.'};}
+  componentDidCatch(error:Error,info:React.ErrorInfo){console.error('TelaHub interface error',error,info);}
+  render(){return this.state.error?<div className="fatal-error"><span className="brand-mark"><MonitorUp/></span><h1>Não foi possível abrir este espaço</h1><p>{this.state.error}</p><button className="primary" onClick={()=>location.reload()}>Tentar novamente</button></div>:this.props.children;}
+}
+
+createRoot(document.getElementById('root')!).render(<React.StrictMode><AppErrorBoundary><App/></AppErrorBoundary></React.StrictMode>);
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));

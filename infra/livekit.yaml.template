@@ -7,5 +7,7 @@ rtc:
 turn:
   enabled: true
   udp_port: 3478
+  relay_range_start: 30000
+  relay_range_end: 30100
 keys:
   __LIVEKIT_API_KEY__: __LIVEKIT_API_SECRET__

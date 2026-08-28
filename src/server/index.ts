@@ -148,12 +148,13 @@ app.post('/api/communities/join', requireAuth, writeLimiter, (req: AuthRequest, 
 });
 
 app.get('/api/communities/:communityId/members', requireAuth, (req: AuthRequest, res) => {
-  if (!isCommunityMember(req.user!.id, req.params.communityId)) return res.status(403).json({ error: 'Acesso negado.' });
+  const communityId = String(req.params.communityId);
+  if (!isCommunityMember(req.user!.id, communityId)) return res.status(403).json({ error: 'Acesso negado.' });
   const members = db.prepare(`
     SELECT u.id,u.username,u.display_name,u.last_seen,cm.role
     FROM community_members cm JOIN users u ON u.id = cm.user_id
     WHERE cm.community_id = ? ORDER BY CASE cm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,u.display_name
-  `).all(req.params.communityId);
+  `).all(communityId);
   res.json({ members });
 });
 
@@ -174,13 +175,14 @@ app.post('/api/communities/:communityId/channels', requireAuth, writeLimiter, (r
 });
 
 app.get('/api/channels/:channelId/messages', requireAuth, (req: AuthRequest, res) => {
-  if (!channelAccess(req.user!.id, req.params.channelId)) return res.status(403).json({ error: 'Acesso negado.' });
+  const channelId = String(req.params.channelId);
+  if (!channelAccess(req.user!.id, channelId)) return res.status(403).json({ error: 'Acesso negado.' });
   const before = typeof req.query.before === 'string' ? req.query.before : '9999-12-31T23:59:59.999Z';
   const messages = db.prepare(`
     SELECT m.id,m.channel_id,m.content,m.created_at,m.edited_at,u.id AS author_id,u.username,u.display_name
     FROM messages m JOIN users u ON u.id = m.author_id
     WHERE m.channel_id = ? AND m.created_at < ? ORDER BY m.created_at DESC LIMIT 60
-  `).all(req.params.channelId, before).reverse();
+  `).all(channelId, before).reverse();
   res.json({ messages });
 });
 
