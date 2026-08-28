@@ -1,0 +1,21 @@
+{
+  email off
+  servers {
+    protocols h1 h2 h3
+  }
+}
+
+app.136-108-86-165.sslip.io {
+  encode zstd gzip
+  reverse_proxy app:3000
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(), microphone=(), display-capture=(self)"
+  }
+}
+
+rtc.136-108-86-165.sslip.io {
+  reverse_proxy livekit:7880
+}

@@ -1,0 +1,25 @@
+# TelaHub
+
+TelaHub é um aplicativo web instalável para comunicação em equipes, com autenticação própria, comunidades, canais de texto persistentes, presença em tempo real e salas de compartilhamento de tela usando LiveKit/WebRTC.
+
+## Componentes
+
+| Serviço | Função |
+|---|---|
+| `app` | API, autenticação, Socket.IO, persistência SQLite e frontend React |
+| `livekit` | SFU WebRTC para publicação e distribuição das telas |
+| `caddy` | HTTPS automático e proxy reverso |
+
+## Operação
+
+A implantação é controlada por `docker compose`. Os dados persistentes ficam em `./data`, enquanto certificados ficam nos volumes do Caddy. As credenciais de infraestrutura permanecem em `.env` e `infra/livekit.yaml`, ambos fora do controle de versão.
+
+```bash
+sudo docker compose up -d --build
+sudo docker compose ps
+sudo docker compose logs -f --tail=100
+```
+
+## Segurança
+
+As senhas são derivadas com scrypt e salt aleatório. As sessões usam tokens opacos guardados como hash no banco e cookies `HttpOnly`, `Secure` e `SameSite=Lax`. O servidor valida origem, associação à comunidade e permissão de canal antes de mensagens ou tokens WebRTC.
