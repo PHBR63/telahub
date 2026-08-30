@@ -11,7 +11,7 @@ app.136-108-86-165.sslip.io {
     Strict-Transport-Security "max-age=31536000; includeSubDomains"
     X-Content-Type-Options "nosniff"
     Referrer-Policy "strict-origin-when-cross-origin"
-    Permissions-Policy "camera=(), microphone=(self), display-capture=(self)"
+    Permissions-Policy "camera=(self), microphone=(self), display-capture=(self)"
   }
 }
 
