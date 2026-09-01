@@ -2,10 +2,11 @@ import express from 'express';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import { createServer } from 'node:http';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { cpus, freemem, loadavg, totalmem } from 'node:os';
 import { Server } from 'socket.io';
 import { AccessToken } from 'livekit-server-sdk';
 import { z } from 'zod';
@@ -22,6 +23,10 @@ const httpServer = createServer(app);
 const onlineUsers = new Map<string, number>();
 type ActiveScreen = { userId:string; displayName:string; active:true; audioMode:'window'|'system'|'none'; surface:'browser'|'window'|'monitor'|'unknown'; hasAudio:boolean; socketId:string };
 const activeScreens = new Map<string, Map<string, ActiveScreen>>();
+type ActiveCamera = { userId:string; displayName:string; active:true; socketId:string };
+const activeCameras = new Map<string, Map<string, ActiveCamera>>();
+const maxActiveScreenStreams = Math.max(4, Number(process.env.MAX_ACTIVE_SCREEN_STREAMS ?? 24));
+const maxActiveCameraStreams = Math.max(8, Number(process.env.MAX_ACTIVE_CAMERA_STREAMS ?? 16));
 let io: Server;
 const publicUrl = process.env.PUBLIC_APP_URL ?? 'https://localhost';
 const livekitUrl = process.env.LIVEKIT_PUBLIC_URL ?? 'wss://localhost';
@@ -29,6 +34,48 @@ const port = Number(process.env.PORT ?? 3000);
 const databasePath = process.env.DATABASE_PATH ?? './data/telahub.db';
 const uploadsDir = process.env.UPLOADS_PATH ?? join(dirname(databasePath), 'uploads');
 const maxIconBytes = 2 * 1024 * 1024;
+let metricsCpuSample = process.cpuUsage();
+let metricsCpuAt = process.hrtime.bigint();
+let metricsNetworkSample = readNetworkBytes();
+let metricsNetworkAt = process.hrtime.bigint();
+function readNetworkBytes() {
+  try {
+    return readFileSync('/proc/net/dev', 'utf8').split('\n').slice(2).reduce((total, line) => {
+      const fields = line.trim().split(/[:\s]+/);
+      if (fields.length < 10 || fields[0] === 'lo') return total;
+      return { rx: total.rx + Number(fields[1] || 0), tx: total.tx + Number(fields[9] || 0) };
+    }, { rx: 0, tx: 0 });
+  } catch { return { rx: 0, tx: 0 }; }
+}
+function collectRuntimeMetrics() {
+  const now = process.hrtime.bigint();
+  const usage = process.cpuUsage();
+  const elapsedMicros = Math.max(1, Number(now - metricsCpuAt) / 1000);
+  const cpuMicros = Math.max(0, (usage.user + usage.system) - (metricsCpuSample.user + metricsCpuSample.system));
+  metricsCpuSample = usage;
+  metricsCpuAt = now;
+  const cpuPercent = Math.min(100, Math.round((cpuMicros / elapsedMicros) * 1000) / 10);
+  const networkNow = readNetworkBytes();
+  const networkElapsedSeconds = Math.max(0.001, Number(now - metricsNetworkAt) / 1_000_000_000);
+  const network = { downMbps: Math.round(((networkNow.rx - metricsNetworkSample.rx) * 8 / networkElapsedSeconds / 1_000_000) * 100) / 100, upMbps: Math.round(((networkNow.tx - metricsNetworkSample.tx) * 8 / networkElapsedSeconds / 1_000_000) * 100) / 100 };
+  metricsNetworkSample = networkNow;
+  metricsNetworkAt = now;
+  const memoryTotal = totalmem();
+  const memoryFree = freemem();
+  const memoryUsed = Math.max(0, memoryTotal - memoryFree);
+  return {
+    capturedAt: new Date().toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
+    cpuPercent,
+    cpuCores: cpus().length,
+    load1: Math.round(loadavg()[0] * 100) / 100,
+    memoryUsedMb: Math.round(memoryUsed / 1024 / 1024),
+    memoryTotalMb: Math.round(memoryTotal / 1024 / 1024),
+    memoryPercent: Math.round((memoryUsed / Math.max(1, memoryTotal)) * 1000) / 10,
+    processRssMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+    network,
+  };
+}
 const acceptedImageTypes = new Set(['image/png','image/jpeg','image/webp']);
 mkdirSync(uploadsDir, { recursive: true });
 
@@ -111,6 +158,35 @@ async function storeIconImage(body: unknown, ownerPrefix: string): Promise<strin
 const iconUpload = express.raw({ type: () => true, limit: '3mb' });
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'telahub', time: new Date().toISOString() }));
+
+app.get('/api/ops/metrics', requireAuth, (req: AuthRequest, res) => {
+  const requestedCommunityId = typeof req.query.communityId === 'string' ? req.query.communityId : '';
+  if (requestedCommunityId && !isCommunityAdmin(req.user!.id, requestedCommunityId)) return res.status(403).json({ error: 'Somente proprietários e administradores podem consultar a saúde da comunidade.' });
+  const communityIds = requestedCommunityId
+    ? [requestedCommunityId]
+    : (db.prepare("SELECT community_id FROM community_members WHERE user_id = ? AND role IN ('owner','admin')").all(req.user!.id) as { community_id: string }[]).map((row) => row.community_id);
+  if (!communityIds.length) return res.status(403).json({ error: 'Acesso administrativo necessário.' });
+  const channelIds = (db.prepare(`SELECT id FROM channels WHERE community_id IN (${communityIds.map(() => '?').join(',')})`).all(...communityIds) as { id: string }[]).map((row) => row.id);
+  const activeRoomEntries = channelIds.flatMap((channelId) => Array.from(activeScreens.get(channelId)?.values() ?? []).map((screen) => ({ channelId, userId: screen.userId, hasAudio: screen.hasAudio })));
+  const activeCameraEntries = channelIds.flatMap((channelId) => Array.from(activeCameras.get(channelId)?.values() ?? []).map((camera) => ({ channelId, userId: camera.userId })));
+  const runtime = collectRuntimeMetrics();
+  const socketClients = io?.engine?.clientsCount ?? 0;
+  const onlineCount = onlineUsers.size;
+  const reasons: string[] = [];
+  if (runtime.memoryPercent >= 80) reasons.push('memória do host acima de 80%');
+  if (runtime.load1 >= Math.max(1, runtime.cpuCores * 0.8)) reasons.push('carga de CPU elevada');
+  if (activeRoomEntries.length >= 10) reasons.push('dez ou mais streams de tela ativas');
+  if (activeCameraEntries.length >= 10) reasons.push('dez ou mais câmeras publicadas');
+  if (runtime.network.upMbps >= 80) reasons.push('saída de rede acima de 80 Mbps');
+  const status = reasons.some((reason) => reason.includes('acima') || reason.includes('elevada')) ? 'critical' : reasons.length ? 'watch' : 'ok';
+  res.json({
+    ok: true,
+    scope: { communityIds, channelCount: channelIds.length },
+    runtime,
+    realtime: { socketClients, onlineUsers: onlineCount, activeScreenStreams: activeRoomEntries.length, activeScreenAudioStreams: activeRoomEntries.filter((screen) => screen.hasAudio).length, activeCameraStreams: activeCameraEntries.length, maxActiveScreenStreams, maxActiveCameraStreams },
+    capacity: { status, reasons, recommendedViewerVideoLimit: 8, recommendedViewerCameraLimit: 8, recommendedFocusedQuality: '720p' },
+  });
+});
 
 app.post('/api/auth/register', authLimiter, (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
@@ -483,11 +559,22 @@ io.on('connection', (socket) => {
     socket.to(`channel:${parsed.data.channelId}`).emit('typing', { userId: user.id, displayName: user.display_name, active: parsed.data.active });
   });
 
+  socket.on('camera:status', (payload: unknown) => {
+    const parsed = z.object({ channelId: z.string(), active: z.boolean() }).safeParse(payload);
+    if (!parsed.success || !channelAccess(user.id, parsed.data.channelId)) return;
+    const cameras = activeCameras.get(parsed.data.channelId) ?? new Map<string, ActiveCamera>();
+    if (parsed.data.active) { const alreadyActive=cameras.has(user.id); if(!alreadyActive&&cameras.size>=maxActiveCameraStreams){socket.emit('capacity:warning',{kind:'camera',limit:maxActiveCameraStreams,message:'Esta sala atingiu o limite operacional de câmeras.'});return;} cameras.set(user.id, { userId:user.id, displayName:user.display_name, active:true, socketId:socket.id }); activeCameras.set(parsed.data.channelId, cameras); }
+    else { cameras.delete(user.id); if (!cameras.size) activeCameras.delete(parsed.data.channelId); }
+    io.to(`channel:${parsed.data.channelId}`).emit('camera:status', { userId:user.id, displayName:user.display_name, active:parsed.data.active });
+  });
+
   socket.on('screen:status', (payload: unknown) => {
     const parsed = z.object({ channelId: z.string(), active: z.boolean(), audioMode: z.enum(['window','system','none']).optional(), surface: z.enum(['browser','window','monitor','unknown']).optional(), hasAudio: z.boolean().optional() }).safeParse(payload);
     if (!parsed.success || !channelAccess(user.id, parsed.data.channelId)) return;
     const screens = activeScreens.get(parsed.data.channelId) ?? new Map<string, ActiveScreen>();
     if (parsed.data.active && parsed.data.audioMode && parsed.data.surface && typeof parsed.data.hasAudio === 'boolean') {
+      const alreadyActive = screens.has(user.id);
+      if (!alreadyActive && screens.size >= maxActiveScreenStreams) { socket.emit('capacity:warning', { kind:'screen', limit:maxActiveScreenStreams, message:'Esta sala atingiu o limite operacional de compartilhamentos de tela.' }); return; }
       screens.set(user.id, { userId:user.id, displayName:user.display_name, active:true, audioMode:parsed.data.audioMode, surface:parsed.data.surface, hasAudio:parsed.data.hasAudio, socketId:socket.id });
       activeScreens.set(parsed.data.channelId, screens);
     } else {
@@ -498,6 +585,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     for (const [channelId, screens] of activeScreens) { const current=screens.get(user.id); if(current?.socketId===socket.id){screens.delete(user.id);io.to(`channel:${channelId}`).emit('screen:status',{userId:user.id,displayName:user.display_name,active:false});if(!screens.size)activeScreens.delete(channelId);} }
+    for (const [channelId, cameras] of activeCameras) { const current=cameras.get(user.id); if(current?.socketId===socket.id){cameras.delete(user.id);io.to(`channel:${channelId}`).emit('camera:status',{userId:user.id,displayName:user.display_name,active:false});if(!cameras.size)activeCameras.delete(channelId);} }
     const count = (onlineUsers.get(user.id) ?? 1) - 1;
     if (count <= 0) {
       onlineUsers.delete(user.id);

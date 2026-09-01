@@ -76,3 +76,10 @@ Quem assiste a uma transmissão pode controlar o zoom localmente entre 50% e 300
 Quem assiste pode escolher quais compartilhamentos de tela deseja receber. O painel **Compartilhamentos que você assiste** permite ativar ou desativar o vídeo de cada publicação, ouvir o áudio separadamente quando disponível e definir um limite local de 1, 2, 4, 8 ou todas as streams. Quando o vídeo é desativado, o LiveKit cancela a assinatura daquela faixa no espectador; a publicação e o transmissor continuam ativos para os demais usuários. A preferência de limite fica salva no navegador, enquanto seleção e áudio são reaplicados quando a sala reconecta.
 
 A câmera e o microfone permanecem independentes dessa seleção. O foco e o zoom funcionam somente nas mídias de vídeo que o usuário escolheu receber. `adaptiveStream`, `dynacast` e camadas simulcast continuam ativos para ajustar a qualidade daquelas streams que permanecem selecionadas.
+
+
+## Escala e observabilidade
+
+A sala mantém assinatura seletiva para telas e câmeras remotas. Cada espectador pode limitar localmente a quantidade de vídeos recebidos e desativar faixas desnecessárias; o áudio pode continuar separado. O painel administrativo **Saúde operacional** exibe CPU do app, carga, memória do host, tráfego, sockets, usuários online, telas ativas, câmeras publicadas, áudio, RSS e uptime, com atualização a cada 15 segundos.
+
+A API protegida `GET /api/ops/metrics?communityId=...` permite a consulta apenas por proprietário ou administrador da comunidade. O backend acompanha limites de 24 streams de tela e 16 câmeras publicadas por comunidade, configuráveis por `MAX_ACTIVE_SCREEN_STREAMS` e `MAX_ACTIVE_CAMERA_STREAMS`, e emite `capacity:warning` quando o limite é atingido. Alertas aparecem para dez ou mais mídias ativas, saída acima de 80 Mbps, memória acima de 80% ou carga elevada. A gravação em nuvem permanece desativada nesta versão.
