@@ -293,3 +293,21 @@ main{overflow:hidden}
   .camera-settings-modal>footer{display:grid;grid-template-columns:1fr}
   .camera-settings-modal>footer button{width:100%}
 }
+
+/* Zoom local do visualizador */
+.screen-tile{isolation:isolate;touch-action:none}
+.screen-tile>video{transform-origin:center center;transition:transform .16s ease;will-change:transform}
+.screen-tile.zoomed>video{transition:none}
+.screen-tile.zoomed{cursor:grab;overflow:hidden}
+.screen-tile.zoomed.dragging{cursor:grabbing}
+.viewer-zoom-controls{position:absolute;right:10px;bottom:43px;z-index:8;display:flex;align-items:center;gap:3px;padding:4px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:rgba(5,8,18,.88);box-shadow:0 8px 22px rgba(0,0,0,.22);backdrop-filter:blur(10px)}
+.viewer-zoom-controls button{height:28px;min-width:28px;padding:0 7px;border:0;border-radius:7px;background:transparent;color:#c8d2e4;font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;gap:4px;cursor:pointer}
+.viewer-zoom-controls button:hover{background:rgba(118,108,255,.25);color:#fff}
+.viewer-zoom-controls button:disabled{opacity:.35;cursor:not-allowed}
+.viewer-zoom-controls button svg{width:14px;height:14px}
+.viewer-zoom-controls output{min-width:42px;text-align:center;color:#f1f4fb;font-size:10px;font-weight:850;font-variant-numeric:tabular-nums}
+@media(max-width:720px){
+  .viewer-zoom-controls{right:8px;bottom:43px}
+  .viewer-zoom-controls button{height:32px;min-width:32px}
+  .viewer-zoom-controls button span{display:none}
+}

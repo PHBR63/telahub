@@ -65,3 +65,7 @@ As senhas aceitam no mínimo 8 caracteres, sem exigência de maiúsculas, númer
 [5]: https://livekit.com/webrtc/bitrate-guide "LiveKit — Bitrate Guide for WebRTC Video"
 [6]: https://docs.livekit.io/transport/media/publish/ "LiveKit — Camera & microphone"
 [7]: https://docs.livekit.io/transport/media/ "LiveKit — Media overview"
+
+## Zoom do visualizador
+
+Quem assiste a uma transmissão pode controlar o zoom localmente entre 50% e 300%, sem alterar a imagem dos demais participantes nem o bitrate enviado pelo transmissor. Os botões oferecem reduzir, ampliar, tamanho original e ajustar à tela. Com zoom acima de 100%, é possível arrastar a imagem para explorar detalhes; a roda do mouse e as teclas `+`, `-`, `0` e `Esc` também são suportadas. Em dispositivos touch, o visualizador aceita gesto de pinça e arraste. O estado é independente por tile e o botão de foco continua funcionando em conjunto com o zoom.
