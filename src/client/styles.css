@@ -311,3 +311,27 @@ main{overflow:hidden}
   .viewer-zoom-controls button{height:32px;min-width:32px}
   .viewer-zoom-controls button span{display:none}
 }
+
+
+/* Seleção local de compartilhamentos para economizar CPU, memória e banda */
+.stream-selection{overflow:visible}
+.stream-selection-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:14px}
+.stream-selection-count{display:flex;align-items:baseline;gap:7px;white-space:nowrap;color:var(--muted);font-size:12px}
+.stream-selection-count strong{color:var(--text);font-size:20px;line-height:1}
+.stream-selection-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.compact-action{padding:8px 10px!important;font-size:11px!important;line-height:1.1}
+.stream-limit{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;white-space:nowrap}
+.stream-limit select{min-width:105px;border:1px solid rgba(150,163,201,.22);border-radius:8px;background:#111a2d;color:var(--text);padding:8px 9px;font:inherit}
+.stream-selection-list{display:grid;gap:8px;max-height:275px;overflow-y:auto;overscroll-behavior:contain;margin-top:12px;padding:2px 5px 2px 0}
+.stream-selection-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid rgba(150,163,201,.14);border-radius:10px;background:rgba(17,26,45,.62);transition:border-color .16s,background .16s}
+.stream-selection-item.selected{border-color:rgba(118,108,255,.48);background:rgba(118,108,255,.09)}
+.stream-selection-item>div:first-child{min-width:0;display:grid;gap:3px}
+.stream-selection-item strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-size:12px}
+.stream-selection-item small{color:var(--muted);font-size:10px}
+.stream-selection-buttons{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-shrink:0}
+.stream-selection-buttons button{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(150,163,201,.22);border-radius:8px;background:transparent;color:var(--muted);padding:7px 9px;font:inherit;font-size:10px;cursor:pointer;transition:all .16s}
+.stream-selection-buttons button:hover{border-color:rgba(118,108,255,.7);color:var(--text)}
+.stream-selection-buttons button.active{border-color:rgba(78,212,198,.55);background:rgba(78,212,198,.12);color:#8df5e6}
+.stream-selection-buttons button.audio-active{border-color:rgba(118,108,255,.7);background:rgba(118,108,255,.14);color:#c2bdff}
+.stream-selection-empty{margin:14px 0;color:var(--muted);font-size:12px}
+@media(max-width:720px){.stream-selection-toolbar{align-items:stretch;flex-direction:column}.stream-selection-actions{justify-content:flex-start}.stream-selection-item{align-items:flex-start;flex-direction:column}.stream-selection-buttons{width:100%;justify-content:flex-start}.stream-selection-buttons button{flex:1;justify-content:center}.stream-selection-list{max-height:330px}}

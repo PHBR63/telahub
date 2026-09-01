@@ -69,3 +69,10 @@ As senhas aceitam no mínimo 8 caracteres, sem exigência de maiúsculas, númer
 ## Zoom do visualizador
 
 Quem assiste a uma transmissão pode controlar o zoom localmente entre 50% e 300%, sem alterar a imagem dos demais participantes nem o bitrate enviado pelo transmissor. Os botões oferecem reduzir, ampliar, tamanho original e ajustar à tela. Com zoom acima de 100%, é possível arrastar a imagem para explorar detalhes; a roda do mouse e as teclas `+`, `-`, `0` e `Esc` também são suportadas. Em dispositivos touch, o visualizador aceita gesto de pinça e arraste. O estado é independente por tile e o botão de foco continua funcionando em conjunto com o zoom.
+
+
+## Seleção local de compartilhamentos
+
+Quem assiste pode escolher quais compartilhamentos de tela deseja receber. O painel **Compartilhamentos que você assiste** permite ativar ou desativar o vídeo de cada publicação, ouvir o áudio separadamente quando disponível e definir um limite local de 1, 2, 4, 8 ou todas as streams. Quando o vídeo é desativado, o LiveKit cancela a assinatura daquela faixa no espectador; a publicação e o transmissor continuam ativos para os demais usuários. A preferência de limite fica salva no navegador, enquanto seleção e áudio são reaplicados quando a sala reconecta.
+
+A câmera e o microfone permanecem independentes dessa seleção. O foco e o zoom funcionam somente nas mídias de vídeo que o usuário escolheu receber. `adaptiveStream`, `dynacast` e camadas simulcast continuam ativos para ajustar a qualidade daquelas streams que permanecem selecionadas.
