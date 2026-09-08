@@ -83,3 +83,8 @@ A câmera e o microfone permanecem independentes dessa seleção. O foco e o zoo
 A sala mantém assinatura seletiva para telas e câmeras remotas. Cada espectador pode limitar localmente a quantidade de vídeos recebidos e desativar faixas desnecessárias; o áudio pode continuar separado. O painel administrativo **Saúde operacional** exibe CPU do app, carga, memória do host, tráfego, sockets, usuários online, telas ativas, câmeras publicadas, áudio, RSS e uptime, com atualização a cada 15 segundos.
 
 A API protegida `GET /api/ops/metrics?communityId=...` permite a consulta apenas por proprietário ou administrador da comunidade. O backend acompanha limites de 24 streams de tela e 16 câmeras publicadas por comunidade, configuráveis por `MAX_ACTIVE_SCREEN_STREAMS` e `MAX_ACTIVE_CAMERA_STREAMS`, e emite `capacity:warning` quando o limite é atingido. Alertas aparecem para dez ou mais mídias ativas, saída acima de 80 Mbps, memória acima de 80% ou carga elevada. A gravação em nuvem permanece desativada nesta versão.
+
+
+## Rolagem otimizada da sala
+
+A sala de transmissão usa um contêiner vertical próprio com `overflow-y: auto`, `overscroll-behavior: contain`, trilho de scrollbar estável e cabeçalho de controles fixo. O scroll da sala não move o documento, as barras laterais ou o painel de membros. No visualizador, a roda do mouse só altera o zoom quando a stream está ampliada ou quando Ctrl está pressionado; em zoom normal ela permanece disponível para a rolagem da sala. Pan, pinça e arraste continuam locais à transmissão. A interface respeita `prefers-reduced-motion` e usa aceleração de touch no celular.

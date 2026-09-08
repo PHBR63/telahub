@@ -361,3 +361,13 @@ main{overflow:hidden}
 .ops-footer button{display:inline-flex;align-items:center;gap:7px}
 @media(max-width:850px){.ops-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.operations-hero>header{gap:12px;flex-direction:column}.ops-metric-grid,.ops-detail-grid{grid-template-columns:1fr}.ops-footer{align-items:stretch;flex-direction:column}.ops-footer button{justify-content:center}}
+
+
+/* Otimização fina de rolagem da sala e do visualizador */
+.screen-room{overscroll-behavior-y:contain;overscroll-behavior-x:none;scrollbar-gutter:stable;scroll-padding-block:10px 24px}
+.screen-room>.screen-layout{overflow:visible}
+.screen-layout,.stream-strip,.screen-tile{overscroll-behavior:contain}
+.screen-tile{user-select:none;-webkit-user-select:none}
+.screen-tile>video{backface-visibility:hidden;-webkit-backface-visibility:hidden}
+@media(prefers-reduced-motion:reduce){.screen-room,.screen-room *{scroll-behavior:auto!important;transition-duration:.01ms!important}}
+@media(max-width:720px){.screen-room{scroll-padding-block:8px 24px}.screen-tile{min-height:260px}}
