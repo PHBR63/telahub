@@ -88,3 +88,12 @@ A API protegida `GET /api/ops/metrics?communityId=...` permite a consulta apenas
 ## Rolagem otimizada da sala
 
 A sala de transmissão usa um contêiner vertical próprio com `overflow-y: auto`, `overscroll-behavior: contain`, trilho de scrollbar estável e cabeçalho de controles fixo. O scroll da sala não move o documento, as barras laterais ou o painel de membros. No visualizador, a roda do mouse só altera o zoom quando a stream está ampliada ou quando Ctrl está pressionado; em zoom normal ela permanece disponível para a rolagem da sala. Pan, pinça e arraste continuam locais à transmissão. A interface respeita `prefers-reduced-motion` e usa aceleração de touch no celular.
+
+
+## Otimização móvel e tela cheia
+
+A sala móvel usa `100dvh`/`100svh`, áreas seguras para notch, rolagem com contenção de overscroll, controles em grade para toque, faixa horizontal com snap no layout focado e suporte à orientação paisagem. Em zoom normal, os tiles permitem rolagem vertical nativa; com zoom acima de 100%, o tile assume o gesto para pan e pinça sem deslocar a sala.
+
+Em telas móveis, vídeos de tiles fora da viewport são pausados localmente por `IntersectionObserver`, usando a sala como raiz. Isso reduz trabalho de composição, CPU e bateria sem despublicar a faixa. A assinatura seletiva continua controlando quais faixas chegam ao cliente.
+
+A sala e cada transmissão de tela possuem botão de tela cheia. O TelaHub usa `requestFullscreen({navigationUI: 'hide'})` quando disponível, acompanha `fullscreenchange`, permite saída pelo botão ou Esc, aplica `100dvh` e `env(safe-area-inset-*)` e mantém zoom, volume e controles visíveis. Quando o navegador não oferece ou rejeita a API nativa, é aplicado um fallback visual no elemento.

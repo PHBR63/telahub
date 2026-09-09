@@ -296,7 +296,7 @@ main{overflow:hidden}
 
 /* Zoom local do visualizador */
 .screen-tile{isolation:isolate;touch-action:none}
-.screen-tile>video{transform-origin:center center;transition:transform .16s ease;will-change:transform}
+.screen-tile>video{transform-origin:center center;transition:transform .16s ease;backface-visibility:hidden;-webkit-backface-visibility:hidden}.screen-tile.zoomed>video{will-change:transform}
 .screen-tile.zoomed>video{transition:none}
 .screen-tile.zoomed{cursor:grab;overflow:hidden}
 .screen-tile.zoomed.dragging{cursor:grabbing}
@@ -371,3 +371,65 @@ main{overflow:hidden}
 .screen-tile>video{backface-visibility:hidden;-webkit-backface-visibility:hidden}
 @media(prefers-reduced-motion:reduce){.screen-room,.screen-room *{scroll-behavior:auto!important;transition-duration:.01ms!important}}
 @media(max-width:720px){.screen-room{scroll-padding-block:8px 24px}.screen-tile{min-height:260px}}
+
+/* Fluidez móvel */
+html{-webkit-text-size-adjust:100%;overscroll-behavior:none}
+button,input,textarea,select{touch-action:manipulation}
+.screen-tile{contain:layout paint}
+@media(max-width:720px){
+  body{overscroll-behavior:none}
+  .app-shell{height:100dvh;min-height:100svh}
+  main{min-width:0}
+  .topbar{min-height:56px;height:auto;padding:9px 11px}
+  .topbar>strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .screen-room{padding:8px;gap:0;scrollbar-gutter:auto;-webkit-overflow-scrolling:touch}
+  .screen-toolbar{padding:10px;margin-bottom:10px;gap:10px}
+  .screen-toolbar>div:first-child{min-width:0}
+  .screen-toolbar>div:first-child strong,.screen-toolbar>div:first-child small{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .screen-toolbar .media-actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;width:100%;gap:8px}
+  .screen-toolbar .media-button{width:100%;min-width:0;height:40px;padding-inline:9px}
+  .screen-toolbar .media-button span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .screen-layout,.screen-layout.focused{min-height:500px}
+  .screen-layout>.screen-grid{grid-auto-rows:minmax(260px,1fr)}
+  .screen-tile{touch-action:pan-y;min-height:240px;contain:layout paint}
+  .screen-tile.zoomed{touch-action:none}
+  .screen-tile>video{transition:none}
+  .stream-strip{touch-action:pan-x;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+  .stream-strip .screen-tile{scroll-snap-align:start}
+  .stream-selection-list{max-height:280px;-webkit-overflow-scrolling:touch}
+  .stream-selection-item{content-visibility:auto;contain-intrinsic-size:76px}
+  .share-preferences{content-visibility:auto;contain-intrinsic-size:150px}
+}
+
+
+/* Tela cheia da sala e da transmissão */
+.screen-room:fullscreen,.screen-room.is-fullscreen{position:fixed;inset:0;z-index:200;width:100vw;height:100dvh;max-height:100dvh;min-height:0;padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));background:#080c18;overflow:auto}
+.screen-room:fullscreen .screen-toolbar,.screen-room.is-fullscreen .screen-toolbar{top:0}
+.screen-room:fullscreen .screen-layout,.screen-room.is-fullscreen .screen-layout{flex:1;min-height:0;height:auto}
+.screen-room:fullscreen .screen-layout>.screen-grid,.screen-room.is-fullscreen .screen-layout>.screen-grid{min-height:0;height:100%;grid-auto-rows:minmax(0,1fr)}
+.screen-tile:fullscreen,.screen-tile.is-fullscreen{position:fixed;inset:0;z-index:300;width:100vw;height:100dvh;min-height:0;border:0;border-radius:0;background:#000;overflow:hidden}
+.screen-tile:fullscreen>video,.screen-tile.is-fullscreen>video{width:100%;height:100%;object-fit:contain}
+.screen-tile:fullscreen .screen-label,.screen-tile.is-fullscreen .screen-label{bottom:max(14px,env(safe-area-inset-bottom));left:max(14px,env(safe-area-inset-left))}
+.screen-tile:fullscreen .stream-fullscreen,.screen-tile.is-fullscreen .stream-fullscreen{top:max(14px,env(safe-area-inset-top));right:max(14px,env(safe-area-inset-right))}
+.screen-tile:fullscreen .viewer-zoom-controls,.screen-tile.is-fullscreen .viewer-zoom-controls{bottom:max(52px,calc(env(safe-area-inset-bottom) + 42px));right:max(14px,env(safe-area-inset-right))}
+.screen-tile:fullscreen .stream-volume,.screen-tile.is-fullscreen .stream-volume{bottom:max(14px,env(safe-area-inset-bottom));right:max(14px,env(safe-area-inset-right))}
+.screen-fullscreen-button{display:inline-flex}
+@media(max-width:720px){
+  .fullscreen-room-button{grid-column:1/-1}
+  .screen-room:fullscreen,.screen-room.is-fullscreen{padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))}
+  .screen-room:fullscreen .screen-layout,.screen-room.is-fullscreen .screen-layout{min-height:0}
+  .screen-room:fullscreen .screen-toolbar,.screen-room.is-fullscreen .screen-toolbar{flex:none}
+  .screen-tile:fullscreen .stream-focus,.screen-tile.is-fullscreen .stream-focus{top:max(14px,env(safe-area-inset-top));right:60px}
+}
+@media(max-width:720px) and (orientation:landscape) and (max-height:520px){
+  .screen-room{padding-top:6px}
+  .screen-toolbar{padding:7px;gap:6px}
+  .screen-toolbar>div:first-child small{display:none}
+  .screen-toolbar .media-button{height:34px}
+  .screen-room:fullscreen .screen-toolbar,.screen-room.is-fullscreen .screen-toolbar{max-height:92px;overflow:auto}
+}
+
+.stream-fullscreen{position:absolute;right:10px;top:48px;z-index:7;display:inline-flex;align-items:center;gap:6px;height:31px;padding:0 9px;border:1px solid rgba(255,255,255,.11);border-radius:9px;background:rgba(5,8,18,.86);color:#cbd4e6;font-size:10px;font-weight:800;cursor:pointer;backdrop-filter:blur(10px)}
+.stream-fullscreen:hover,.screen-tile.is-fullscreen .stream-fullscreen{color:#fff;border-color:rgba(78,212,198,.5);background:rgba(10,67,67,.88)}
+.stream-fullscreen svg{width:14px;height:14px}
+@media(max-width:720px){.stream-fullscreen{height:36px;min-width:36px;padding:0 10px;justify-content:center}.stream-fullscreen span{display:none}}
