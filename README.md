@@ -104,3 +104,8 @@ A sala e cada transmissão de tela possuem botão de tela cheia. O TelaHub usa `
 O limite local de 1, 2, 4, 8 ou todas as streams controla somente a assinatura de vídeo. Quando uma publicação possui faixa de áudio, o áudio remoto é selecionado por padrão junto com o vídeo e pode ser controlado separadamente no painel **Compartilhamentos que você assiste**. Se o espectador desativa o vídeo, a faixa de áudio permanece ativa em um elemento de áudio independente. A implementação evita renderizar a mesma faixa duas vezes quando vídeo e áudio estão selecionados.
 
 O volume e o mudo continuam locais por transmissão. O áudio não é pausado pelo `IntersectionObserver` usado para economizar vídeo fora da viewport no celular. Para ouvir uma stream sem imagem, use **Somente vídeo** para manter a seleção de áudio e desative **Assistindo vídeo**; para interromper também o som, desative **Ouvir áudio**. O limite de câmeras e a capacidade de publicação da sala são separados do limite local do espectador.
+
+
+### Volume no modo somente áudio
+
+Quando uma stream fica sem vídeo, o TelaHub mantém um controle local com identificação da publicação, slider de 0% a 100%, mudo e reativação. O controle altera apenas o elemento de áudio daquela stream. Em vídeo ativo, o slider continua integrado ao tile; em áudio-only, ele aparece no painel de saídas de áudio. O cache desta atualização é `telahub-v16`.

@@ -433,3 +433,13 @@ button,input,textarea,select{touch-action:manipulation}
 .stream-fullscreen:hover,.screen-tile.is-fullscreen .stream-fullscreen{color:#fff;border-color:rgba(78,212,198,.5);background:rgba(10,67,67,.88)}
 .stream-fullscreen svg{width:14px;height:14px}
 @media(max-width:720px){.stream-fullscreen{height:36px;min-width:36px;padding:0 10px;justify-content:center}.stream-fullscreen span{display:none}}
+
+.audio-only-output{position:relative;z-index:4;display:flex;align-items:center;gap:8px;max-width:min(100%,560px);margin:6px 0;padding:8px 10px;border:1px solid rgba(118,108,255,.22);border-radius:10px;background:rgba(9,15,30,.88);box-shadow:0 6px 18px rgba(0,0,0,.16);color:var(--muted)}
+.audio-only-output audio{display:none}
+.audio-only-label{min-width:100px;max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-size:11px;font-weight:750}
+.audio-only-output button{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:0;border-radius:7px;background:transparent;color:#cbd4e6;cursor:pointer}
+.audio-only-output button:hover{background:rgba(118,108,255,.2);color:#fff}
+.audio-only-output button svg{width:15px;height:15px}
+.audio-only-output input{width:130px;accent-color:var(--accent)}
+.audio-only-output output{min-width:38px;text-align:right;color:#dfe6f4;font-size:10px;font-variant-numeric:tabular-nums}
+@media(max-width:720px){.audio-only-output{max-width:100%;gap:6px;padding:8px}.audio-only-label{min-width:0;flex:1;max-width:38vw}.audio-only-output input{width:min(28vw,110px)}}
