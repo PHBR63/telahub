@@ -97,3 +97,10 @@ A sala móvel usa `100dvh`/`100svh`, áreas seguras para notch, rolagem com cont
 Em telas móveis, vídeos de tiles fora da viewport são pausados localmente por `IntersectionObserver`, usando a sala como raiz. Isso reduz trabalho de composição, CPU e bateria sem despublicar a faixa. A assinatura seletiva continua controlando quais faixas chegam ao cliente.
 
 A sala e cada transmissão de tela possuem botão de tela cheia. O TelaHub usa `requestFullscreen({navigationUI: 'hide'})` quando disponível, acompanha `fullscreenchange`, permite saída pelo botão ou Esc, aplica `100dvh` e `env(safe-area-inset-*)` e mantém zoom, volume e controles visíveis. Quando o navegador não oferece ou rejeita a API nativa, é aplicado um fallback visual no elemento.
+
+
+## Áudio independente das streams
+
+O limite local de 1, 2, 4, 8 ou todas as streams controla somente a assinatura de vídeo. Quando uma publicação possui faixa de áudio, o áudio remoto é selecionado por padrão junto com o vídeo e pode ser controlado separadamente no painel **Compartilhamentos que você assiste**. Se o espectador desativa o vídeo, a faixa de áudio permanece ativa em um elemento de áudio independente. A implementação evita renderizar a mesma faixa duas vezes quando vídeo e áudio estão selecionados.
+
+O volume e o mudo continuam locais por transmissão. O áudio não é pausado pelo `IntersectionObserver` usado para economizar vídeo fora da viewport no celular. Para ouvir uma stream sem imagem, use **Somente vídeo** para manter a seleção de áudio e desative **Assistindo vídeo**; para interromper também o som, desative **Ouvir áudio**. O limite de câmeras e a capacidade de publicação da sala são separados do limite local do espectador.

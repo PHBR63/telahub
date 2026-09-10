@@ -21,7 +21,7 @@ type ViewerZoom = {scale:number;x:number;y:number};
 type ScreenSelection = {video:boolean;audio:boolean};
 type ScreenSource = {id:string;label:string;isLocal:boolean;videoPublication:any;audioPublication?:any;videoTrack?:RemoteTrack|LocalTrack;audioTrack?:RemoteTrack;meta?:CaptureInfo|null};
 type CameraSource = {id:string;label:string;isLocal:boolean;publication:any;track?:RemoteTrack|LocalTrack;mirror:boolean;fit:CameraFit};
-function defaultScreenSelection(source:ScreenSource,index:number,limit:number):ScreenSelection{return{video:source.isLocal||limit===0||index<limit,audio:false};}
+function defaultScreenSelection(source:ScreenSource,index:number,limit:number):ScreenSelection{return{video:source.isLocal||limit===0||index<limit,audio:!source.isLocal&&Boolean(source.audioPublication)};}
 const DEFAULT_VIEWER_ZOOM:ViewerZoom={scale:1,x:0,y:0};
 const ZOOM_STEPS=[0.5,0.75,1,1.25,1.5,2,2.5,3];
 function clampZoom(value:number){return Math.min(3,Math.max(0.5,value));}
@@ -247,7 +247,7 @@ function ScreenRoom({channel,user,socket}:{channel:Channel;user:User;socket:Sock
   const cameraTracks=useMemo(()=>cameraSources.flatMap((source,index)=>{const selected=cameraSelections[source.id]??(source.isLocal||cameraVideoLimit===0||index<cameraVideoLimit);return selected&&source.track&&!source.publication.isMuted?[{track:source.track,label:source.label,id:source.id,isLocal:source.isLocal,mirror:source.mirror,fit:source.fit}]:[];}),[cameraSources,cameraSelections,cameraVideoLimit]);
   const mediaItems=useMemo(()=>[...tracks.map(item=>({...item,kind:'screen' as const})),...cameraTracks.map(item=>({...item,kind:'camera' as const}))],[tracks,cameraTracks]);
   const microphoneTracks=useMemo(()=>{if(!room)return[] as {track:RemoteTrack;id:string}[];return Array.from(room.remoteParticipants.values()).flatMap(p=>[p.getTrackPublication(Track.Source.Microphone)].filter(pub=>pub?.track).map(pub=>({track:pub!.track as RemoteTrack,id:`${p.identity}-${pub!.source}`})));},[room,version]);
-  const screenAudioTracks=useMemo(()=>screenSources.flatMap((source,index)=>{const selected=screenSelections[source.id]??defaultScreenSelection(source,index,screenVideoLimit);return selected.audio&&source.audioTrack?[{track:source.audioTrack,id:`${source.id}-audio`}]:[];}),[screenSources,screenSelections,screenVideoLimit]);
+  const screenAudioTracks=useMemo(()=>screenSources.flatMap((source,index)=>{const selected=screenSelections[source.id]??defaultScreenSelection(source,index,screenVideoLimit);return selected.audio&&!selected.video&&source.audioTrack?[{track:source.audioTrack,id:`${source.id}-audio`}]:[];}),[screenSources,screenSelections,screenVideoLimit]);
   const audioTracks=[...microphoneTracks,...screenAudioTracks];
   function selectionFor(source:ScreenSource,index:number,override=screenSelections):ScreenSelection{return override[source.id]??defaultScreenSelection(source,index,screenVideoLimit);}
   function changeScreenLimit(value:number){setScreenVideoLimit(value);localStorage.setItem('telahub-screen-video-limit',String(value));setScreenSelections(previous=>{const next:{[key:string]:ScreenSelection}={...previous};let active=0;screenSources.forEach((source,index)=>{const existing=previous[source.id];const current=existing??defaultScreenSelection(source,index,value);let video=current.video;if(value>0&&video&&active>=value)video=false;if(video)active+=1;next[source.id]={...current,video};});return next;});}
