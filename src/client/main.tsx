@@ -142,7 +142,7 @@ function useMobileVideoPlayback(videoRef:React.RefObject<HTMLVideoElement|null>)
 }
 
 function ScreenTile({track,audioTrack,label,isLocal,meta,focused,onFocus,fullscreen,fullscreenId,onFullscreen}:{track:RemoteTrack|LocalTrack;audioTrack?:RemoteTrack;label:string;isLocal:boolean;meta?:CaptureInfo|null;focused:boolean;onFocus:()=>void;fullscreen:boolean;fullscreenId:string;onFullscreen:(target:string,element:HTMLElement|null)=>void}){
-  const tileRef=useRef<HTMLDivElement>(null); const videoRef=useRef<HTMLVideoElement>(null); useMobileVideoPlayback(videoRef); const audioRef=useRef<HTMLAudioElement>(null); const dragRef=useRef<{clientX:number;clientY:number;x:number;y:number}|null>(null); const pointersRef=useRef<Map<number,{clientX:number;clientY:number}>>(new Map()); const pinchRef=useRef<{distance:number;scale:number}|null>(null); const [volume,setVolume]=useState(1); const [muted,setMuted]=useState(false); const [zoom,setZoom]=useState<ViewerZoom>(DEFAULT_VIEWER_ZOOM); const [dragging,setDragging]=useState(false);
+  const tileRef=useRef<HTMLDivElement>(null); const videoRef=useRef<HTMLVideoElement>(null); useMobileVideoPlayback(videoRef); const audioRef=useRef<HTMLAudioElement>(null); const dragRef=useRef<{clientX:number;clientY:number;x:number;y:number}|null>(null); const pointersRef=useRef<Map<number,{clientX:number;clientY:number}>>(new Map()); const pinchRef=useRef<{distance:number;scale:number}|null>(null); const [volume,setVolume]=useState(0.5); const [muted,setMuted]=useState(false); const [zoom,setZoom]=useState<ViewerZoom>(DEFAULT_VIEWER_ZOOM); const [dragging,setDragging]=useState(false);
   useEffect(()=>{const el=videoRef.current;if(el)track.attach(el);return()=>{if(el)track.detach(el);};},[track]);
   useEffect(()=>{const el=audioRef.current;if(!el||!audioTrack)return;audioTrack.attach(el);el.volume=volume;el.muted=muted;el.play().catch(()=>{});return()=>{audioTrack.detach(el);};},[audioTrack]);
   useEffect(()=>{if(audioRef.current){audioRef.current.volume=volume;audioRef.current.muted=muted;}},[volume,muted]);
@@ -157,7 +157,7 @@ function ScreenTile({track,audioTrack,label,isLocal,meta,focused,onFocus,fullscr
 }
 
 function AudioOutput({track,label,controllable=false}:{track:RemoteTrack;label?:string;controllable?:boolean}){
-  const ref=useRef<HTMLAudioElement>(null); const [volume,setVolume]=useState(1); const [muted,setMuted]=useState(false);
+  const ref=useRef<HTMLAudioElement>(null); const [volume,setVolume]=useState(0.5); const [muted,setMuted]=useState(false);
   useEffect(()=>{const el=ref.current;if(el)track.attach(el);return()=>{if(el)track.detach(el);};},[track]);
   useEffect(()=>{if(ref.current){ref.current.volume=volume;ref.current.muted=muted;}},[volume,muted]);
   if(!controllable)return <audio ref={ref} autoPlay playsInline/>;

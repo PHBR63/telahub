@@ -109,3 +109,8 @@ O volume e o mudo continuam locais por transmissão. O áudio não é pausado pe
 ### Volume no modo somente áudio
 
 Quando uma stream fica sem vídeo, o TelaHub mantém um controle local com identificação da publicação, slider de 0% a 100%, mudo e reativação. O controle altera apenas o elemento de áudio daquela stream. Em vídeo ativo, o slider continua integrado ao tile; em áudio-only, ele aparece no painel de saídas de áudio. O cache desta atualização é `telahub-v16`.
+
+
+### Volume inicial das streams
+
+Cada stream de áudio começa com volume local de 50% para cada espectador, tanto no tile de vídeo quanto no modo somente áudio. O valor é aplicado quando o componente da publicação entra na sala; ajustes manuais posteriores, incluindo mudo e novo volume, permanecem locais ao espectador. O cache desta atualização é `telahub-v17`.
