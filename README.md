@@ -114,3 +114,8 @@ Quando uma stream fica sem vídeo, o TelaHub mantém um controle local com ident
 ### Volume inicial das streams
 
 Cada stream de áudio começa com volume local de 50% para cada espectador, tanto no tile de vídeo quanto no modo somente áudio. O valor é aplicado quando o componente da publicação entra na sala; ajustes manuais posteriores, incluindo mudo e novo volume, permanecem locais ao espectador. O cache desta atualização é `telahub-v17`.
+
+
+### Correção do login e troca de sessão
+
+O frontend invalida respostas assíncronas de comunidades e membros quando a sessão muda. Ao sair e entrar com outra conta, dados da sessão anterior não podem mais substituir a comunidade, os canais ou os membros da nova conta. O cache desta correção é `telahub-v18`.
