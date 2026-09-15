@@ -119,3 +119,8 @@ Cada stream de áudio começa com volume local de 50% para cada espectador, tant
 ### Correção do login e troca de sessão
 
 O frontend invalida respostas assíncronas de comunidades e membros quando a sessão muda. Ao sair e entrar com outra conta, dados da sessão anterior não podem mais substituir a comunidade, os canais ou os membros da nova conta. O cache desta correção é `telahub-v18`.
+
+
+### Cadastro de novos usuários
+
+O cadastro cria a conta, o primeiro espaço, os canais `geral` e `compartilhar-tela` e mostra o código de recuperação em um modal. O botão final agora informa claramente **Concluir cadastro e entrar**, evitando que a pessoa confunda a etapa obrigatória de salvar o código com uma falha no cadastro.

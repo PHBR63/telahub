@@ -119,7 +119,7 @@ function Auth({onAuthenticated}:{onAuthenticated:(user:User)=>void}){
         {mode!=='recover'&&<button onClick={()=>setMode('recover')}>Esqueci minha senha</button>}
       </div>
     </section>
-    {newRecovery&&<div className="modal-backdrop"><div className="recovery-modal"><span className="modal-icon"><KeyRound/></span><h3>Guarde seu novo código</h3><p>Este código é a única forma de recuperar sua conta sem e-mail. Armazene-o em um local seguro.</p><code>{newRecovery}</code><button className="primary wide" onClick={()=>{setNewRecovery('');if(pendingUser)onAuthenticated(pendingUser);}}>Já salvei o código</button></div></div>}
+    {newRecovery&&<div className="modal-backdrop"><div className="recovery-modal"><span className="modal-icon"><KeyRound/></span><h3>Cadastro criado</h3><p>Guarde este código: ele é a única forma de recuperar sua conta sem e-mail. Depois, clique abaixo para concluir o cadastro e entrar no seu espaço.</p><code>{newRecovery}</code><button className="primary wide" onClick={()=>{setNewRecovery('');if(pendingUser)onAuthenticated(pendingUser);}}>Concluir cadastro e entrar</button></div></div>}
   </div>
 }
 
