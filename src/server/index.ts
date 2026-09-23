@@ -108,7 +108,7 @@ const credentialsSchema = z.object({
   password: z.string().min(8).max(128),
 });
 const registerSchema = credentialsSchema.extend({
-  username: z.string().trim().min(3).max(24).regex(/^[a-zA-Z0-9_.-]+$/),
+  username: z.string().trim().min(3).max(24).regex(/^[\p{L}\p{M}\p{N}_.-]+$/u).transform((v) => v.normalize("NFC")),
   displayName: z.string().trim().min(2).max(40),
 });
 const iconIds = ['user','users','sparkles','gamepad','code','rocket','crown','shield','palette','music','coffee','cat','star'] as const;
@@ -190,7 +190,7 @@ app.get('/api/ops/metrics', requireAuth, (req: AuthRequest, res) => {
 
 app.post('/api/auth/register', authLimiter, (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Confira e-mail, usuário e senha. A senha deve ter ao menos 8 caracteres.' });
+  if (!parsed.success) { const field = String(parsed.error.issues[0]?.path[0] ?? ''); const error = field === 'username' ? 'Nome de usuário inválido: use de 3 a 24 caracteres, com letras, números, ponto, hífen ou sublinhado.' : field === 'email' ? 'Informe um e-mail válido.' : field === 'password' ? 'A senha deve ter entre 8 e 128 caracteres.' : field === 'displayName' ? 'Nome de exibição deve ter entre 2 e 40 caracteres.' : 'Confira os dados informados.'; return res.status(400).json({ error }); }
   const { email, username, displayName, password } = parsed.data;
   const userId = id();
   const communityId = id();
