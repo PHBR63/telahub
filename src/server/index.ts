@@ -17,6 +17,7 @@ import {
   recoveryCode, requireAuth, sameOrigin, sha256, userFromCookie, verifyPassword,
   type AuthRequest,
 } from './security.js';
+import { emailDeliveryConfigured, sendPasswordResetEmail } from './mailer.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -280,6 +281,50 @@ app.post('/api/auth/recover', authLimiter, (req, res) => {
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(row.id);
   })();
   res.json({ ok: true, recoveryCode: nextRecovery });
+});
+
+app.post('/api/auth/request-password-reset', authLimiter, async (req, res) => {
+  const parsed = z.object({ email: z.string().email().max(160).transform((value) => value.trim().toLowerCase()) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Informe um e-mail válido.' });
+  if (!emailDeliveryConfigured()) return res.status(503).json({ error: 'A recuperação por e-mail ainda não está configurada no servidor.' });
+
+  const row: any = db.prepare('SELECT id, email FROM users WHERE email = ?').get(parsed.data.email);
+  const genericResponse = { ok: true, message: 'Se o e-mail estiver cadastrado, enviaremos um link de recuperação. Verifique também a pasta de spam.' };
+  if (!row) return res.status(202).json(genericResponse);
+
+  const token = id();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
+  db.transaction(() => {
+    db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ? OR expires_at <= ?').run(row.id, now.toISOString());
+    db.prepare('INSERT INTO password_reset_tokens (token_hash,user_id,created_at,expires_at) VALUES (?,?,?,?)').run(sha256(token), row.id, now.toISOString(), expiresAt);
+  })();
+  try {
+    await sendPasswordResetEmail(row.email, token);
+  } catch (error) {
+    db.prepare('DELETE FROM password_reset_tokens WHERE token_hash = ?').run(sha256(token));
+    console.error('Password reset email failed', error);
+  }
+  res.status(202).json(genericResponse);
+});
+
+app.post('/api/auth/reset-password', authLimiter, (req, res) => {
+  const parsed = z.object({ token: z.string().min(16).max(128), newPassword: z.string().min(8).max(128) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Link ou senha inválidos.' });
+  const now = new Date().toISOString();
+  const tokenHash = sha256(parsed.data.token);
+  const reset: any = db.prepare('SELECT user_id FROM password_reset_tokens WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?').get(tokenHash, now);
+  if (!reset) return res.status(401).json({ error: 'Este link é inválido, expirou ou já foi usado.' });
+  const changed = db.transaction(() => {
+    const result = db.prepare('UPDATE password_reset_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?').run(now, tokenHash, now);
+    if (result.changes !== 1) return false;
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(parsed.data.newPassword), reset.user_id);
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(reset.user_id);
+    db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ? AND token_hash != ?').run(reset.user_id, tokenHash);
+    return true;
+  })();
+  if (!changed) return res.status(401).json({ error: 'Este link é inválido, expirou ou já foi usado.' });
+  res.json({ ok: true });
 });
 
 app.get('/api/communities', requireAuth, (req: AuthRequest, res) => {

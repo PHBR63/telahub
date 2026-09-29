@@ -72,9 +72,13 @@ function time(value:string){ return new Intl.DateTimeFormat('pt-BR',{hour:'2-dig
 function dateLabel(value:string){ const d=new Date(value); const today=new Date(); return d.toDateString()===today.toDateString()?'Hoje':new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'long'}).format(d); }
 
 function Auth({onAuthenticated}:{onAuthenticated:(user:User)=>void}){
-  const [mode,setMode]=useState<'login'|'register'|'recover'>('login');
+  const initialResetToken=typeof window!=='undefined'?new URLSearchParams(window.location.search).get('reset')||'':'';
+  const [mode,setMode]=useState<'login'|'register'|'recover'|'reset'>(initialResetToken?'reset':'login');
+  const [resetToken,setResetToken]=useState(initialResetToken);
   const [form,setForm]=useState({email:'',password:'',username:'',displayName:'',recoveryCode:'',newPassword:''});
+  const [confirmPassword,setConfirmPassword]=useState('');
   const [error,setError]=useState('');
+  const [success,setSuccess]=useState('');
   const [loading,setLoading]=useState(false);
   const [showPassword,setShowPassword]=useState(false);
   const [newRecovery,setNewRecovery]=useState('');
@@ -86,9 +90,14 @@ function Auth({onAuthenticated}:{onAuthenticated:(user:User)=>void}){
         const r=await api<{user:User}>('/api/auth/login',{method:'POST',body:JSON.stringify({email:form.email,password:form.password})}); onAuthenticated(r.user);
       }else if(mode==='register'){
         const r=await api<{user:User;recoveryCode:string}>('/api/auth/register',{method:'POST',body:JSON.stringify(form)}); setNewRecovery(r.recoveryCode); setPendingUser(r.user);
+      }else if(mode==='recover'){
+        const r=await api<{message:string}>('/api/auth/request-password-reset',{method:'POST',body:JSON.stringify({email:form.email})});
+        setSuccess(r.message);
       }else{
-        const r=await api<{recoveryCode:string}>('/api/auth/recover',{method:'POST',body:JSON.stringify({email:form.email,recoveryCode:form.recoveryCode,newPassword:form.newPassword})});
-        setNewRecovery(r.recoveryCode); setMode('login'); setForm({...form,password:'',newPassword:'',recoveryCode:''});
+        if(!resetToken)throw new Error('Link de recuperação ausente ou inválido.');
+        if(form.newPassword!==confirmPassword)throw new Error('As senhas não coincidem.');
+        await api<{ok:true}>('/api/auth/reset-password',{method:'POST',body:JSON.stringify({token:resetToken,newPassword:form.newPassword})});
+        setSuccess('Senha redefinida com sucesso. Agora você já pode entrar.'); setMode('login'); setResetToken(''); setForm({...form,password:'',newPassword:'',recoveryCode:''}); setConfirmPassword(''); window.history.replaceState({},'',window.location.pathname);
       }
     }catch(err:any){setError(err.message);}finally{setLoading(false);}
   }
@@ -103,20 +112,21 @@ function Auth({onAuthenticated}:{onAuthenticated:(user:User)=>void}){
     <section className="auth-card">
       <div className="mobile-brand brand"><span className="brand-mark"><MonitorUp size={20}/></span><span>TelaHub</span></div>
       <p className="eyebrow">BEM-VINDO</p>
-      <h2>{mode==='login'?'Entre no seu espaço':mode==='register'?'Crie sua conta':'Recupere o acesso'}</h2>
-      <p className="muted">{mode==='login'?'Continue de onde sua equipe parou.':mode==='register'?'Seu primeiro espaço será criado automaticamente.':'Use o código entregue no seu cadastro.'}</p>
+      <h2>{mode==='login'?'Entre no seu espaço':mode==='register'?'Crie sua conta':mode==='recover'?'Recupere sua senha':'Defina uma nova senha'}</h2>
+      <p className="muted">{mode==='login'?'Continue de onde sua equipe parou.':mode==='register'?'Seu primeiro espaço será criado automaticamente.':mode==='recover'?'Informe seu e-mail e enviaremos um link seguro para redefinir a senha.':'O link é válido por 30 minutos e pode ser usado uma única vez.'}</p>
       <form onSubmit={submit}>
         {mode==='register'&&<><label>Nome de exibição<input required maxLength={40} value={form.displayName} onChange={e=>setForm({...form,displayName:e.target.value})} placeholder="Como devemos chamar você?"/></label><label>Nome de usuário<input required minLength={3} maxLength={24} value={form.username} onChange={e=>setForm({...form,username:e.target.value})} placeholder="seu.nome"/></label><small className="auth-field-hint">Use 3 a 24 caracteres: letras, números, ponto, hífen ou sublinhado.</small></>}
-        <label>E-mail<input required type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="voce@empresa.com"/></label>
-        {mode==='recover'&&<label>Código de recuperação<input required value={form.recoveryCode} onChange={e=>setForm({...form,recoveryCode:e.target.value.toUpperCase()})} placeholder="CÓDIGO SALVO"/></label>}
-        <label>{mode==='recover'?'Nova senha':'Senha'}<span className="password-wrap"><input required minLength={8} type={showPassword?'text':'password'} value={mode==='recover'?form.newPassword:form.password} onChange={e=>mode==='recover'?setForm({...form,newPassword:e.target.value}):setForm({...form,password:e.target.value})} placeholder="Mínimo de 8 caracteres"/><button type="button" className="eye" onClick={()=>setShowPassword(!showPassword)}>{showPassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></span></label>
+        {mode!=='reset'&&<label>E-mail<input required type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="voce@empresa.com"/></label>}
+        {mode!=='recover'&&<label>{mode==='reset'?'Nova senha':'Senha'}<span className="password-wrap"><input required minLength={8} type={showPassword?'text':'password'} value={mode==='reset'?form.newPassword:form.password} onChange={e=>mode==='reset'?setForm({...form,newPassword:e.target.value}):setForm({...form,password:e.target.value})} placeholder="Mínimo de 8 caracteres"/><button type="button" className="eye" onClick={()=>setShowPassword(!showPassword)}>{showPassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></span></label>}
+        {mode==='reset'&&<label>Confirme a nova senha<input required minLength={8} type={showPassword?'text':'password'} value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} placeholder="Repita a nova senha"/></label>}
+        {success&&<div className="success-box">{success}</div>}
         {error&&<div className="error-box">{error}</div>}
-        <button className="primary wide" disabled={loading}>{loading?'Aguarde…':mode==='login'?'Entrar':mode==='register'?'Criar conta':'Redefinir senha'}</button>
+        <button className="primary wide" disabled={loading}>{loading?'Aguarde…':mode==='login'?'Entrar':mode==='register'?'Criar conta':mode==='recover'?'Enviar link de recuperação':'Salvar nova senha'}</button>
       </form>
       <div className="auth-links">
-        {mode!=='login'&&<button onClick={()=>setMode('login')}>Já tenho conta</button>}
-        {mode!=='register'&&<button onClick={()=>setMode('register')}>Criar uma conta</button>}
-        {mode!=='recover'&&<button onClick={()=>setMode('recover')}>Esqueci minha senha</button>}
+        {mode!=='login'&&<button onClick={()=>{setMode('login');setError('');setSuccess('')}}>Já tenho conta</button>}
+        {mode!=='register'&&mode!=='reset'&&<button onClick={()=>{setMode('register');setError('');setSuccess('')}}>Criar uma conta</button>}
+        {mode!=='recover'&&mode!=='reset'&&<button onClick={()=>{setMode('recover');setError('');setSuccess('')}}>Esqueci minha senha</button>}
       </div>
     </section>
     {newRecovery&&<div className="modal-backdrop"><div className="recovery-modal"><span className="modal-icon"><KeyRound/></span><h3>Cadastro criado</h3><p>Guarde este código: ele é a única forma de recuperar sua conta sem e-mail. Depois, clique abaixo para concluir o cadastro e entrar no seu espaço.</p><code>{newRecovery}</code><button className="primary wide" onClick={()=>{setNewRecovery('');if(pendingUser)onAuthenticated(pendingUser);}}>Concluir cadastro e entrar</button></div></div>}

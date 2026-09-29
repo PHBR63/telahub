@@ -30,6 +30,13 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT
+);
 CREATE TABLE IF NOT EXISTS communities (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -74,6 +81,7 @@ CREATE TABLE IF NOT EXISTS screen_sessions (
 CREATE INDEX IF NOT EXISTS idx_messages_channel_created ON messages(channel_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_members_user ON community_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expiry ON password_reset_tokens(expires_at);
 `);
 
 function ensureColumn(table: 'users'|'communities', column: string, definition: string) {

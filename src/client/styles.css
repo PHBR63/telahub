@@ -445,3 +445,4 @@ button,input,textarea,select{touch-action:manipulation}
 @media(max-width:720px){.audio-only-output{max-width:100%;gap:6px;padding:8px}.audio-only-label{min-width:0;flex:1;max-width:38vw}.audio-only-output input{width:min(28vw,110px)}}
 
 .auth-field-hint{display:block;margin-top:-8px;color:var(--muted);font-size:11px;line-height:1.4}
+.success-box{padding:11px 13px;border-radius:10px;background:rgba(78,212,198,.1);color:#9df4e7;border:1px solid rgba(78,212,198,.22);font-size:13px;line-height:1.45}

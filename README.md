@@ -52,6 +52,12 @@ sudo docker compose ps
 sudo docker compose logs -f --tail=100
 ```
 
+## Recuperação de senha por e-mail
+
+Na tela **Esqueci minha senha**, o usuário informa o e-mail e recebe um link transacional do Resend. O link contém um token opaco armazenado somente como hash no SQLite, expira em 30 minutos, pode ser usado uma única vez e invalida as sessões antigas após a troca da senha. A resposta da solicitação é genérica para não revelar se um e-mail está cadastrado.
+
+Para habilitar o envio em produção, configure no `.env` do servidor uma chave `RESEND_API_KEY` e um `EMAIL_FROM` usando um remetente ou domínio autorizado no Resend. A chave nunca deve ser enviada ao GitHub ou ao frontend. Sem essas variáveis, o aplicativo mantém o código de recuperação existente e informa que o envio por e-mail ainda não está configurado.
+
 ## Segurança
 
 As senhas aceitam no mínimo 8 caracteres, sem exigência de maiúsculas, números ou símbolos, e são derivadas com scrypt e salt aleatório. As sessões usam tokens opacos guardados como hash no banco e cookies `HttpOnly`, `Secure` e `SameSite=Lax`. O servidor valida origem, associação à comunidade e permissão de canal antes de mensagens ou tokens WebRTC. Nos uploads, valida tipo declarado e formato real, limita a entrada a 2 MB, restringe a 20 milhões de pixels e recodifica o conteúdo antes de publicá-lo. A prévia da câmera permanece local até confirmação, e desligar a câmera interrompe o dispositivo em vez de apenas ocultar o vídeo.
