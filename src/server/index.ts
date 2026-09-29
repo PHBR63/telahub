@@ -211,7 +211,7 @@ app.post('/api/auth/register', authLimiter, (req, res) => {
         .run(id(), communityId, 'compartilhar-tela', 'screen', 1, now);
     })();
     createSession(res, userId);
-    res.status(201).json({ user: publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId)), recoveryCode: recovery });
+    res.status(201).json({ user: publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId)) });
   } catch (error: any) {
     if (String(error?.message).includes('UNIQUE')) return res.status(409).json({ error: 'E-mail ou nome de usuário já está em uso.' });
     console.error(error);

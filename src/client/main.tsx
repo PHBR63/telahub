@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { io, type Socket } from 'socket.io-client';
 import { AudioPresets, Room, RoomEvent, Track, VideoPreset, type RemoteTrack, type LocalTrack } from 'livekit-client';
-import { Hash, MonitorUp, Plus, Minus, Maximize2, LogOut, Send, Users, Copy, Radio, Wifi, ShieldCheck, Eye, EyeOff, KeyRound, Mic, MicOff, Volume2, VolumeX, Pin, PinOff, Gauge, Settings, X, Save, RotateCw, Pencil, Trash2, ChevronUp, ChevronDown, UserCog, UserRound, Sparkles, Gamepad2, Code2, Rocket, Crown, Palette, Music2, Coffee, Cat, Star, ImagePlus, ImageOff, Camera, CameraOff, SlidersHorizontal, FlipHorizontal2, Minimize2, type LucideIcon } from 'lucide-react';
+import { Hash, MonitorUp, Plus, Minus, Maximize2, LogOut, Send, Users, Copy, Radio, Wifi, ShieldCheck, Eye, EyeOff, Mic, MicOff, Volume2, VolumeX, Pin, PinOff, Gauge, Settings, X, Save, RotateCw, Pencil, Trash2, ChevronUp, ChevronDown, UserCog, UserRound, Sparkles, Gamepad2, Code2, Rocket, Crown, Palette, Music2, Coffee, Cat, Star, ImagePlus, ImageOff, Camera, CameraOff, SlidersHorizontal, FlipHorizontal2, Minimize2, type LucideIcon } from 'lucide-react';
 import './styles.css';
 
 type User = { id:string; email:string; username:string; display_name:string; avatar_icon:string; avatar_color:string; avatar_image:string|null; created_at:string; last_seen:string };
@@ -81,15 +81,13 @@ function Auth({onAuthenticated}:{onAuthenticated:(user:User)=>void}){
   const [success,setSuccess]=useState('');
   const [loading,setLoading]=useState(false);
   const [showPassword,setShowPassword]=useState(false);
-  const [newRecovery,setNewRecovery]=useState('');
-  const [pendingUser,setPendingUser]=useState<User|null>(null);
   async function submit(e:React.FormEvent){
     e.preventDefault(); setError(''); setLoading(true);
     try{
       if(mode==='login'){
         const r=await api<{user:User}>('/api/auth/login',{method:'POST',body:JSON.stringify({email:form.email,password:form.password})}); onAuthenticated(r.user);
       }else if(mode==='register'){
-        const r=await api<{user:User;recoveryCode:string}>('/api/auth/register',{method:'POST',body:JSON.stringify(form)}); setNewRecovery(r.recoveryCode); setPendingUser(r.user);
+        const r=await api<{user:User}>('/api/auth/register',{method:'POST',body:JSON.stringify(form)}); onAuthenticated(r.user);
       }else if(mode==='recover'){
         const r=await api<{message:string}>('/api/auth/request-password-reset',{method:'POST',body:JSON.stringify({email:form.email})});
         setSuccess(r.message);
@@ -129,7 +127,6 @@ function Auth({onAuthenticated}:{onAuthenticated:(user:User)=>void}){
         {mode!=='recover'&&mode!=='reset'&&<button onClick={()=>{setMode('recover');setError('');setSuccess('')}}>Esqueci minha senha</button>}
       </div>
     </section>
-    {newRecovery&&<div className="modal-backdrop"><div className="recovery-modal"><span className="modal-icon"><KeyRound/></span><h3>Cadastro criado</h3><p>Guarde este código: ele é a única forma de recuperar sua conta sem e-mail. Depois, clique abaixo para concluir o cadastro e entrar no seu espaço.</p><code>{newRecovery}</code><button className="primary wide" onClick={()=>{setNewRecovery('');if(pendingUser)onAuthenticated(pendingUser);}}>Concluir cadastro e entrar</button></div></div>}
   </div>
 }
 

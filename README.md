@@ -1,6 +1,6 @@
 # TelaHub
 
-TelaHub é um aplicativo web instalável para comunicação em equipes, com autenticação própria, comunidades, canais de texto persistentes, presença em tempo real e salas de compartilhamento de tela usando LiveKit/WebRTC.
+TelaHub é um aplicativo web instalável para comunicação em equipes, com autenticação própria, recuperação de senha por e-mail, comunidades, canais de texto persistentes, presença em tempo real e salas de compartilhamento de tela usando LiveKit/WebRTC.
 
 ## Recursos
 
@@ -56,7 +56,7 @@ sudo docker compose logs -f --tail=100
 
 Na tela **Esqueci minha senha**, o usuário informa o e-mail e recebe um link transacional do Resend. O link contém um token opaco armazenado somente como hash no SQLite, expira em 30 minutos, pode ser usado uma única vez e invalida as sessões antigas após a troca da senha. A resposta da solicitação é genérica para não revelar se um e-mail está cadastrado.
 
-Para habilitar o envio em produção, configure no `.env` do servidor uma chave `RESEND_API_KEY` e um `EMAIL_FROM` usando um remetente ou domínio autorizado no Resend. A chave nunca deve ser enviada ao GitHub ou ao frontend. Sem essas variáveis, o aplicativo mantém o código de recuperação existente e informa que o envio por e-mail ainda não está configurado.
+Para habilitar o envio em produção, configure no `.env` do servidor uma chave `RESEND_API_KEY` e um `EMAIL_FROM` usando um remetente ou domínio autorizado no Resend. A chave nunca deve ser enviada ao GitHub ou ao frontend. Sem essas variáveis, o aplicativo informa que o envio por e-mail ainda não está configurado; o cadastro não exibe nem retorna código de recuperação.
 
 ## Segurança
 
