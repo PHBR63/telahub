@@ -10,7 +10,7 @@ export function id(): string {
 }
 
 export function inviteCode(): string {
-  return randomBytes(4).toString('hex').toUpperCase();
+  return randomBytes(16).toString('hex').toUpperCase();
 }
 
 export function recoveryCode(): string {

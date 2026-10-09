@@ -144,3 +144,5 @@ O cadastro cria a conta, o primeiro espaço e os canais `geral` e `compartilhar-
 - Controles de áudio-only visíveis, foco de teclado, `aria-live`, `autocomplete` e fechamento de diálogos por Escape.
 - Rolagem de autenticação liberada em telas pequenas e suporte a `prefers-reduced-motion`.
 - Logs Docker com rotação limitada; banco e backups protegidos com permissões 600/700; `backups/` fora do Git.
+- Novos convites usam 128 bits de entropia; convites antigos continuam válidos até serem rotacionados.
+- Dependências npm estão fixadas nas versões presentes no lockfile para builds reproduzíveis.
