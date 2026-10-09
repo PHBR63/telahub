@@ -147,6 +147,13 @@ function notifyProfileChanged(user: ReturnType<typeof publicUser>) {
 function disconnectUserSockets(userId: string) {
   for (const socket of socketsByUser.get(userId) ?? []) socket.disconnect(true);
 }
+function notifyPresence(userId: string, online: boolean) {
+  for (const client of io?.sockets.sockets.values() ?? []) {
+    if (client.data.user?.id === userId || db.prepare('SELECT 1 FROM community_members target JOIN community_members viewer ON viewer.community_id = target.community_id WHERE target.user_id = ? AND viewer.user_id = ? LIMIT 1').get(userId, client.data.user?.id)) {
+      client.emit('presence:update', { userId, online });
+    }
+  }
+}
 function allowSocketEvent(socketId: string, key: string, limit: number, windowMs: number): boolean {
   const now = Date.now();
   const windows = socketEventWindows.get(socketId) ?? new Map<string, { startedAt:number; count:number }>();
@@ -618,7 +625,7 @@ io.on('connection', (socket) => {
   socketsByUser.set(user.id, userSockets);
   onlineUsers.set(user.id, (onlineUsers.get(user.id) ?? 0) + 1);
   db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(new Date().toISOString(), user.id);
-  io.emit('presence:update', { userId: user.id, online: true });
+  notifyPresence(user.id, true);
 
   socket.on('channel:join', (channelId: string, ack?: Function) => {
     if (!allowSocketEvent(socket.id, 'join', 30, 60_000)) return ack?.({ ok: false, error: 'Muitas mudanças de canal. Aguarde um instante.' });
@@ -722,13 +729,15 @@ io.on('connection', (socket) => {
     if (count <= 0) {
       onlineUsers.delete(user.id);
       db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(new Date().toISOString(), user.id);
-      io.emit('presence:update', { userId: user.id, online: false });
+      notifyPresence(user.id, false);
     } else onlineUsers.set(user.id, count);
   });
 });
 
 purgeExpiredSessions();
 setInterval(purgeExpiredSessions, 6 * 60 * 60 * 1000).unref();
+db.prepare('DELETE FROM password_reset_tokens WHERE expires_at <= ? OR used_at IS NOT NULL').run(new Date().toISOString());
+setInterval(() => db.prepare('DELETE FROM password_reset_tokens WHERE expires_at <= ? OR used_at IS NOT NULL').run(new Date().toISOString()), 60 * 60 * 1000).unref();
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const clientDir = join(__dirname, '../client');
