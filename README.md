@@ -88,7 +88,7 @@ A câmera e o microfone permanecem independentes dessa seleção. O foco e o zoo
 
 A sala mantém assinatura seletiva para telas e câmeras remotas. Cada espectador pode limitar localmente a quantidade de vídeos recebidos e desativar faixas desnecessárias; o áudio pode continuar separado. O painel administrativo **Saúde operacional** exibe CPU do app, carga, memória do host, tráfego, sockets, usuários online, telas ativas, câmeras publicadas, áudio, RSS e uptime, com atualização a cada 15 segundos.
 
-A API protegida `GET /api/ops/metrics?communityId=...` permite a consulta apenas por proprietário ou administrador da comunidade. O backend acompanha limites de 24 streams de tela e 16 câmeras publicadas por comunidade, configuráveis por `MAX_ACTIVE_SCREEN_STREAMS` e `MAX_ACTIVE_CAMERA_STREAMS`, e emite `capacity:warning` quando o limite é atingido. Alertas aparecem para dez ou mais mídias ativas, saída acima de 80 Mbps, memória acima de 80% ou carga elevada. A gravação em nuvem permanece desativada nesta versão.
+A API protegida `GET /api/ops/metrics?communityId=...` permite a consulta apenas por proprietário ou administrador da comunidade. O backend acompanha limites de 24 streams de tela e 16 câmeras publicadas por comunidade, configuráveis por `MAX_ACTIVE_SCREEN_STREAMS` e `MAX_ACTIVE_CAMERA_STREAMS`, e agora reserva um slot server-side antes da captura/publicação. Reservas expiram, são liberadas em erro/stop/disconnect e emitem `capacity:warning` quando a sala não pode admitir uma nova mídia. Alertas aparecem para dez ou mais mídias ativas, saída acima de 80 Mbps, memória acima de 80% ou carga elevada. A gravação em nuvem permanece desativada nesta versão.
 
 
 ## Rolagem otimizada da sala
@@ -114,12 +114,12 @@ O volume e o mudo continuam locais por transmissão. O áudio não é pausado pe
 
 ### Volume no modo somente áudio
 
-Quando uma stream fica sem vídeo, o TelaHub mantém um controle local com identificação da publicação, slider de 0% a 100%, mudo e reativação. O controle altera apenas o elemento de áudio daquela stream. Em vídeo ativo, o slider continua integrado ao tile; em áudio-only, ele aparece no painel de saídas de áudio. O cache desta atualização é `telahub-v16`.
+Quando uma stream fica sem vídeo, o TelaHub mantém um controle local visível com identificação da publicação, slider de 0% a 100%, mudo e reativação. O controle altera apenas o elemento de áudio daquela stream. Em vídeo ativo, o slider continua integrado ao tile; em áudio-only, ele aparece no painel **Áudio ativo sem vídeo**. O cache desta atualização é `telahub-v21`.
 
 
 ### Volume inicial das streams
 
-Cada stream de áudio começa com volume local de 50% para cada espectador, tanto no tile de vídeo quanto no modo somente áudio. O valor é aplicado quando o componente da publicação entra na sala; ajustes manuais posteriores, incluindo mudo e novo volume, permanecem locais ao espectador. O cache desta atualização é `telahub-v17`.
+Cada stream de áudio começa com volume local de 50% para cada espectador, tanto no tile de vídeo quanto no modo somente áudio. O valor é aplicado quando o componente da publicação entra na sala; ajustes manuais posteriores, incluindo mudo e novo volume, permanecem locais ao espectador.
 
 
 ### Correção do login e troca de sessão
@@ -129,4 +129,18 @@ O frontend invalida respostas assíncronas de comunidades e membros quando a ses
 
 ### Cadastro de novos usuários
 
-O cadastro cria a conta, o primeiro espaço, os canais `geral` e `compartilhar-tela` e mostra o código de recuperação em um modal. O botão final agora informa claramente **Concluir cadastro e entrar**, evitando que a pessoa confunda a etapa obrigatória de salvar o código com uma falha no cadastro.
+O cadastro cria a conta, o primeiro espaço e os canais `geral` e `compartilhar-tela`, e entra diretamente no aplicativo. A recuperação é feita exclusivamente por link enviado por e-mail; nenhum código é exibido ou retornado no cadastro.
+
+## Hardening e UX — `telahub-v21`
+
+- Origem fail-closed para requisições mutáveis; origem ausente ou diferente é rejeitada.
+- Logout, reset de senha e remoção de membro revogam sockets ativos.
+- Reservas server-side para telas e câmeras antes da captura/publicação, com expiração e limpeza em disconnect.
+- Rate limit por socket para mensagens, digitação, mudanças de canal e estados de mídia.
+- Upload limitado a 2 MB no parser, com MIME permitido antes do processamento.
+- Índices para sessões, tokens de reset e ordenação de canais.
+- Chat com carregamento, retry, erro de envio e botão de novas mensagens sem roubar a rolagem do histórico.
+- Status real de conexão: conectado, reconectando e offline.
+- Controles de áudio-only visíveis, foco de teclado, `aria-live`, `autocomplete` e fechamento de diálogos por Escape.
+- Rolagem de autenticação liberada em telas pequenas e suporte a `prefers-reduced-motion`.
+- Logs Docker com rotação limitada; banco e backups protegidos com permissões 600/700; `backups/` fora do Git.

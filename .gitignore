@@ -4,3 +4,4 @@ data/
 .env
 *.log
 infra/livekit.yaml
+backups/

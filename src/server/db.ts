@@ -81,7 +81,10 @@ CREATE TABLE IF NOT EXISTS screen_sessions (
 CREATE INDEX IF NOT EXISTS idx_messages_channel_created ON messages(channel_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_members_user ON community_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expiry ON password_reset_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_channels_community_position ON channels(community_id, position);
 `);
 
 function ensureColumn(table: 'users'|'communities', column: string, definition: string) {

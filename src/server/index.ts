@@ -26,6 +26,11 @@ type ActiveScreen = { userId:string; displayName:string; active:true; audioMode:
 const activeScreens = new Map<string, Map<string, ActiveScreen>>();
 type ActiveCamera = { userId:string; displayName:string; active:true; socketId:string };
 const activeCameras = new Map<string, Map<string, ActiveCamera>>();
+type MediaKind = 'screen'|'camera';
+type MediaReservation = { userId:string; socketId:string; kind:MediaKind; expiresAt:number };
+const mediaReservations = new Map<string, Map<string, MediaReservation>>();
+const socketsByUser = new Map<string, Set<any>>();
+const socketEventWindows = new Map<string, Map<string, { startedAt:number; count:number }>>();
 const maxActiveScreenStreams = Math.max(4, Number(process.env.MAX_ACTIVE_SCREEN_STREAMS ?? 24));
 const maxActiveCameraStreams = Math.max(8, Number(process.env.MAX_ACTIVE_CAMERA_STREAMS ?? 16));
 let io: Server;
@@ -136,7 +141,43 @@ function notifyCommunityChanged(communityId: string) {
 }
 function notifyProfileChanged(user: ReturnType<typeof publicUser>) {
   for (const client of io.sockets.sockets.values()) if (client.data.user?.id === user.id) Object.assign(client.data.user, user);
-  io.emit('profile:updated', { user });
+  const { email: _email, last_seen: _lastSeen, ...broadcastUser } = user;
+  io.emit('profile:updated', { user: broadcastUser });
+}
+function disconnectUserSockets(userId: string) {
+  for (const socket of socketsByUser.get(userId) ?? []) socket.disconnect(true);
+}
+function allowSocketEvent(socketId: string, key: string, limit: number, windowMs: number): boolean {
+  const now = Date.now();
+  const windows = socketEventWindows.get(socketId) ?? new Map<string, { startedAt:number; count:number }>();
+  const current = windows.get(key);
+  if (!current || now - current.startedAt >= windowMs) windows.set(key, { startedAt: now, count: 1 });
+  else if (current.count >= limit) return false;
+  else current.count += 1;
+  socketEventWindows.set(socketId, windows);
+  return true;
+}
+function mediaMap(kind: MediaKind) { return kind === 'screen' ? activeScreens : activeCameras; }
+function reservationCount(channelId: string, kind: MediaKind, exceptUserId?: string): number {
+  const now = Date.now();
+  const reservations = mediaReservations.get(channelId);
+  if (!reservations) return 0;
+  for (const [userId, reservation] of reservations) if (reservation.expiresAt <= now) reservations.delete(userId);
+  return Array.from(reservations.values()).filter((reservation) => reservation.kind === kind && reservation.userId !== exceptUserId).length;
+}
+function releaseMedia(channelId: string, userId: string, kind: MediaKind, socketId?: string) {
+  const reservations = mediaReservations.get(channelId);
+  const reservation = reservations?.get(userId);
+  if (reservation && (!socketId || reservation.socketId === socketId) && reservation.kind === kind) {
+    reservations!.delete(userId);
+    if (!reservations!.size) mediaReservations.delete(channelId);
+  }
+  const active = mediaMap(kind).get(channelId);
+  const current = active?.get(userId);
+  if (current && (!socketId || current.socketId === socketId)) {
+    active!.delete(userId);
+    if (!active!.size) mediaMap(kind).delete(channelId);
+  }
 }
 function removeStoredImage(url: string | null | undefined) {
   if (!url || !/^\/uploads\/[a-z0-9-]+\.webp$/.test(url)) return;
@@ -156,7 +197,7 @@ async function storeIconImage(body: unknown, ownerPrefix: string): Promise<strin
     .toFile(target);
   return `/uploads/${filename}`;
 }
-const iconUpload = express.raw({ type: () => true, limit: '3mb' });
+const iconUpload = express.raw({ type: (req) => acceptedImageTypes.has(String(req.headers['content-type'] ?? '').split(';')[0]), limit: '2mb' });
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'telahub', time: new Date().toISOString() }));
 
@@ -230,6 +271,7 @@ app.post('/api/auth/login', authLimiter, (req, res) => {
 
 app.post('/api/auth/logout', requireAuth, (req, res) => {
   destroySession(req, res);
+  disconnectUserSockets((req as AuthRequest).user!.id);
   res.status(204).end();
 });
 
@@ -280,6 +322,7 @@ app.post('/api/auth/recover', authLimiter, (req, res) => {
     db.prepare('UPDATE users SET password_hash = ?, recovery_code_hash = ? WHERE id = ?').run(hashPassword(parsed.data.newPassword), sha256(nextRecovery), row.id);
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(row.id);
   })();
+  disconnectUserSockets(row.id);
   res.json({ ok: true, recoveryCode: nextRecovery });
 });
 
@@ -324,6 +367,7 @@ app.post('/api/auth/reset-password', authLimiter, (req, res) => {
     return true;
   })();
   if (!changed) return res.status(401).json({ error: 'Este link é inválido, expirou ou já foi usado.' });
+  disconnectUserSockets(reset.user_id);
   res.json({ ok: true });
 });
 
@@ -450,6 +494,7 @@ app.delete('/api/communities/:communityId/members/:userId', requireAuth, writeLi
   const allowed = removingSelf || requester.role === 'owner' || (requester.role === 'admin' && target.role === 'member');
   if (!allowed) return res.status(403).json({ error: 'Você não pode remover este membro.' });
   db.prepare('DELETE FROM community_members WHERE community_id = ? AND user_id = ?').run(communityId, targetUserId);
+  disconnectUserSockets(targetUserId);
   notifyCommunityChanged(communityId);
   res.status(204).end();
 });
@@ -568,20 +613,54 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
   const user = socket.data.user;
+  const userSockets = socketsByUser.get(user.id) ?? new Set<any>();
+  userSockets.add(socket);
+  socketsByUser.set(user.id, userSockets);
   onlineUsers.set(user.id, (onlineUsers.get(user.id) ?? 0) + 1);
   db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(new Date().toISOString(), user.id);
   io.emit('presence:update', { userId: user.id, online: true });
 
   socket.on('channel:join', (channelId: string, ack?: Function) => {
+    if (!allowSocketEvent(socket.id, 'join', 30, 60_000)) return ack?.({ ok: false, error: 'Muitas mudanças de canal. Aguarde um instante.' });
     const channel = channelAccess(user.id, channelId);
     if (!channel) return ack?.({ ok: false, error: 'Acesso negado.' });
     for (const room of socket.rooms) if (room.startsWith('channel:')) socket.leave(room);
     socket.join(`channel:${channelId}`);
     for (const screen of activeScreens.get(channelId)?.values() ?? []) { const { socketId: _socketId, ...publicScreen } = screen; socket.emit('screen:status', publicScreen); }
+    for (const camera of activeCameras.get(channelId)?.values() ?? []) { const { socketId: _socketId, ...publicCamera } = camera; socket.emit('camera:status', publicCamera); }
+    ack?.({ ok: true });
+  });
+
+  socket.on('media:reserve', (payload: unknown, ack?: Function) => {
+    if (!allowSocketEvent(socket.id, 'media-reserve', 12, 60_000)) return ack?.({ ok: false, error: 'Muitas tentativas de mídia. Aguarde um instante.' });
+    const parsed = z.object({ channelId: z.string().min(1), kind: z.enum(['screen','camera']) }).safeParse(payload);
+    if (!parsed.success) return ack?.({ ok: false, error: 'Reserva de mídia inválida.' });
+    const channel = channelAccess(user.id, parsed.data.channelId);
+    if (!channel || channel.type !== 'screen') return ack?.({ ok: false, error: 'Sala de mídia inválida.' });
+    const kind = parsed.data.kind;
+    const existing = mediaReservations.get(channel.id)?.get(user.id);
+    if (existing?.socketId === socket.id && existing.kind === kind && existing.expiresAt > Date.now()) return ack?.({ ok: true });
+    const active = mediaMap(kind).get(channel.id)?.get(user.id);
+    if (active?.socketId === socket.id) return ack?.({ ok: true });
+    const limit = kind === 'screen' ? maxActiveScreenStreams : maxActiveCameraStreams;
+    if (reservationCount(channel.id, kind, user.id) + (mediaMap(kind).get(channel.id)?.has(user.id) ? 1 : 0) >= limit) {
+      return ack?.({ ok: false, error: kind === 'screen' ? 'A sala atingiu o limite operacional de compartilhamentos de tela.' : 'A sala atingiu o limite operacional de câmeras.' });
+    }
+    const reservations = mediaReservations.get(channel.id) ?? new Map<string, MediaReservation>();
+    reservations.set(user.id, { userId: user.id, socketId: socket.id, kind, expiresAt: Date.now() + 60_000 });
+    mediaReservations.set(channel.id, reservations);
+    ack?.({ ok: true });
+  });
+
+  socket.on('media:release', (payload: unknown, ack?: Function) => {
+    const parsed = z.object({ channelId: z.string().min(1), kind: z.enum(['screen','camera']) }).safeParse(payload);
+    if (!parsed.success || !channelAccess(user.id, parsed.data.channelId)) return ack?.({ ok: false });
+    releaseMedia(parsed.data.channelId, user.id, parsed.data.kind, socket.id);
     ack?.({ ok: true });
   });
 
   socket.on('message:send', (payload: unknown, ack?: Function) => {
+    if (!allowSocketEvent(socket.id, 'message', 30, 10_000)) return ack?.({ ok: false, error: 'Você está enviando mensagens rápido demais.' });
     const parsed = z.object({ channelId: z.string().min(1), content: z.string().trim().min(1).max(4000) }).safeParse(payload);
     if (!parsed.success) return ack?.({ ok: false, error: 'Mensagem inválida.' });
     const channel = channelAccess(user.id, parsed.data.channelId);
@@ -599,38 +678,46 @@ io.on('connection', (socket) => {
   });
 
   socket.on('typing', (payload: unknown) => {
+    if (!allowSocketEvent(socket.id, 'typing', 30, 10_000)) return;
     const parsed = z.object({ channelId: z.string(), active: z.boolean() }).safeParse(payload);
     if (!parsed.success || !channelAccess(user.id, parsed.data.channelId)) return;
     socket.to(`channel:${parsed.data.channelId}`).emit('typing', { userId: user.id, displayName: user.display_name, active: parsed.data.active });
   });
 
   socket.on('camera:status', (payload: unknown) => {
+    if (!allowSocketEvent(socket.id, 'camera-status', 20, 10_000)) return;
     const parsed = z.object({ channelId: z.string(), active: z.boolean() }).safeParse(payload);
     if (!parsed.success || !channelAccess(user.id, parsed.data.channelId)) return;
     const cameras = activeCameras.get(parsed.data.channelId) ?? new Map<string, ActiveCamera>();
-    if (parsed.data.active) { const alreadyActive=cameras.has(user.id); if(!alreadyActive&&cameras.size>=maxActiveCameraStreams){socket.emit('capacity:warning',{kind:'camera',limit:maxActiveCameraStreams,message:'Esta sala atingiu o limite operacional de câmeras.'});return;} cameras.set(user.id, { userId:user.id, displayName:user.display_name, active:true, socketId:socket.id }); activeCameras.set(parsed.data.channelId, cameras); }
-    else { cameras.delete(user.id); if (!cameras.size) activeCameras.delete(parsed.data.channelId); }
+    if (parsed.data.active) { const reservation=mediaReservations.get(parsed.data.channelId)?.get(user.id); const alreadyActive=cameras.has(user.id); if(!alreadyActive&&(!reservation||reservation.kind!=='camera')){socket.emit('capacity:warning',{kind:'camera',limit:maxActiveCameraStreams,message:'Reserve a câmera antes de publicar.'});return;} if(!alreadyActive&&cameras.size>=maxActiveCameraStreams){socket.emit('capacity:warning',{kind:'camera',limit:maxActiveCameraStreams,message:'Esta sala atingiu o limite operacional de câmeras.'});return;} cameras.set(user.id, { userId:user.id, displayName:user.display_name, active:true, socketId:socket.id }); activeCameras.set(parsed.data.channelId, cameras); }
+    else { releaseMedia(parsed.data.channelId, user.id, 'camera', socket.id); }
     io.to(`channel:${parsed.data.channelId}`).emit('camera:status', { userId:user.id, displayName:user.display_name, active:parsed.data.active });
   });
 
   socket.on('screen:status', (payload: unknown) => {
+    if (!allowSocketEvent(socket.id, 'screen-status', 20, 10_000)) return;
     const parsed = z.object({ channelId: z.string(), active: z.boolean(), audioMode: z.enum(['window','system','none']).optional(), surface: z.enum(['browser','window','monitor','unknown']).optional(), hasAudio: z.boolean().optional() }).safeParse(payload);
     if (!parsed.success || !channelAccess(user.id, parsed.data.channelId)) return;
     const screens = activeScreens.get(parsed.data.channelId) ?? new Map<string, ActiveScreen>();
     if (parsed.data.active && parsed.data.audioMode && parsed.data.surface && typeof parsed.data.hasAudio === 'boolean') {
       const alreadyActive = screens.has(user.id);
+      const reservation=mediaReservations.get(parsed.data.channelId)?.get(user.id);
+      if (!alreadyActive && (!reservation || reservation.kind!=='screen')) { socket.emit('capacity:warning', { kind:'screen', limit:maxActiveScreenStreams, message:'Reserve o compartilhamento antes de publicar.' }); return; }
       if (!alreadyActive && screens.size >= maxActiveScreenStreams) { socket.emit('capacity:warning', { kind:'screen', limit:maxActiveScreenStreams, message:'Esta sala atingiu o limite operacional de compartilhamentos de tela.' }); return; }
       screens.set(user.id, { userId:user.id, displayName:user.display_name, active:true, audioMode:parsed.data.audioMode, surface:parsed.data.surface, hasAudio:parsed.data.hasAudio, socketId:socket.id });
       activeScreens.set(parsed.data.channelId, screens);
     } else {
-      screens.delete(user.id); if (!screens.size) activeScreens.delete(parsed.data.channelId);
+      releaseMedia(parsed.data.channelId, user.id, 'screen', socket.id);
     }
     io.to(`channel:${parsed.data.channelId}`).emit('screen:status', { userId: user.id, displayName: user.display_name, active: parsed.data.active, audioMode: parsed.data.audioMode, surface: parsed.data.surface, hasAudio: parsed.data.hasAudio });
   });
 
   socket.on('disconnect', () => {
-    for (const [channelId, screens] of activeScreens) { const current=screens.get(user.id); if(current?.socketId===socket.id){screens.delete(user.id);io.to(`channel:${channelId}`).emit('screen:status',{userId:user.id,displayName:user.display_name,active:false});if(!screens.size)activeScreens.delete(channelId);} }
-    for (const [channelId, cameras] of activeCameras) { const current=cameras.get(user.id); if(current?.socketId===socket.id){cameras.delete(user.id);io.to(`channel:${channelId}`).emit('camera:status',{userId:user.id,displayName:user.display_name,active:false});if(!cameras.size)activeCameras.delete(channelId);} }
+    for (const [channelId, screens] of activeScreens) { const current=screens.get(user.id); if(current?.socketId===socket.id){releaseMedia(channelId,user.id,'screen',socket.id);io.to(`channel:${channelId}`).emit('screen:status',{userId:user.id,displayName:user.display_name,active:false});} }
+    for (const [channelId, cameras] of activeCameras) { const current=cameras.get(user.id); if(current?.socketId===socket.id){releaseMedia(channelId,user.id,'camera',socket.id);io.to(`channel:${channelId}`).emit('camera:status',{userId:user.id,displayName:user.display_name,active:false});} }
+    for (const [channelId, reservations] of mediaReservations) { for (const [reservedUserId, reservation] of reservations) if (reservedUserId===user.id && reservation.socketId===socket.id) reservations.delete(reservedUserId); if (!reservations.size) mediaReservations.delete(channelId); }
+    const connectedSockets = socketsByUser.get(user.id); connectedSockets?.delete(socket); if (connectedSockets && !connectedSockets.size) socketsByUser.delete(user.id);
+    socketEventWindows.delete(socket.id);
     const count = (onlineUsers.get(user.id) ?? 1) - 1;
     if (count <= 0) {
       onlineUsers.delete(user.id);

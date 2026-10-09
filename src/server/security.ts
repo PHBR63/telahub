@@ -82,9 +82,11 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
 
 export function sameOrigin(req: Request, res: Response, next: NextFunction): void {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  const origin = req.headers.origin;
   const expected = process.env.PUBLIC_APP_URL;
-  if (origin && expected && origin !== expected) {
+  let expectedOrigin = '';
+  try { expectedOrigin = expected ? new URL(expected).origin : ''; } catch { expectedOrigin = ''; }
+  const origin = req.headers.origin || (req.headers.referer ? (() => { try { return new URL(req.headers.referer).origin; } catch { return ''; } })() : '');
+  if (!expectedOrigin || origin !== expectedOrigin) {
     res.status(403).json({ error: 'Origem não autorizada.' });
     return;
   }
